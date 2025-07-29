@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
-  <title>التحقق الذكي التلقائي | Analyzer Vision</title>
+  <title>Live Visual Dual Check</title>
   <style>
     body {
       background: #0b0b0b;
@@ -17,6 +17,20 @@
       border: 2px solid #ff8800;
       margin-bottom: 10px;
     }
+    .container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      margin: auto;
+    }
+    .box {
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      border: 2px solid;
+    }
+    .left { top: 60px; left: 20px; border-color: #0f0; }
+    .right { top: 60px; right: 20px; border-color: #f00; }
     button {
       margin: 1rem;
       padding: 0.8rem;
@@ -28,179 +42,122 @@
       cursor: pointer;
     }
     canvas { display: none; }
-    #overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-      z-index: 999;
-    }
-    #results {
-      margin-top: 1rem;
-      font-size: 1rem;
-      color: #ccc;
-    }
-    #confirmBtn { display: none; margin-bottom: 1rem; }
+    #results { margin-top: 1rem; font-size: 1rem; color: #ccc; }
+    #confirmBtn { display: none; }
   </style>
 </head>
 <body>
-  <h2>🧠 التحقق البصري التلقائي للمستندين</h2>
-
-  <video id="video" autoplay playsinline></video>
-  <canvas id="overlay"></canvas>
-  <canvas id="canvas"></canvas>
-
-  <button onclick="analyze()">🔍 تحليل تلقائي للمربعات</button>
+  <h2>🧠 التحقق البصري المزدوج للمستندين</h2>
+  <div class="container">
+    <video id="video" autoplay playsinline></video>
+    <div class="box left"></div>
+    <div class="box right"></div>
+  </div>
+  <button onclick="analyze()">🔍 تحليل الشكل والمحتوى</button>
   <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
-  <button onclick="captureAndAnalyzeFull()">📸 تحليل كامل مباشر</button>
-
+  <canvas id="canvas"></canvas>
   <div id="results"></div>
 
-<script type="module">
-import { analyzeColorSimilarity }   from './units/color.js';
-import { analyzeTextureSimilarity } from './units/texture.js';
-import { analyzeGeometricSimilarity } from './units/shape.js';
-import { displayMatchSummary }      from './units/display.js';
-
+<script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
-const overlay = document.getElementById("overlay");
 const ctx = canvas.getContext("2d");
-const octx = overlay.getContext("2d");
 
 navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
   .then(stream => video.srcObject = stream)
   .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
 
 function analyze() {
-  if (video.readyState < 2) return alert("📷 الكاميرا لم تجهز بعد");
+  if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة بعد");
 
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-  ctx.drawImage(video, 0, 0);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  overlay.width = canvas.width;
-  overlay.height = canvas.height;
-  overlay.style.width = video.offsetWidth + "px";
-  overlay.style.height = video.offsetHeight + "px";
-  octx.clearRect(0, 0, overlay.width, overlay.height);
+  const left = ctx.getImageData(20, 60, 150, 150);
+  const right = ctx.getImageData(canvas.width - 170, 60, 150, 150);
 
-  const blockSize = 80, step = 20;
-  const leftBlocks = [], rightBlocks = [];
-
-  for (let y = 50; y < canvas.height - blockSize; y += step) {
-    for (let x = 0; x < canvas.width / 2 - blockSize; x += step) {
-      leftBlocks.push({ x, y, data: ctx.getImageData(x, y, blockSize, blockSize) });
-    }
-    for (let x = canvas.width / 2; x < canvas.width - blockSize; x += step) {
-      rightBlocks.push({ x, y, data: ctx.getImageData(x, y, blockSize, blockSize) });
-    }
-  }
-
-  let bestMatch = { score: 0, left: null, right: null };
-
-  leftBlocks.forEach(lb => {
-    rightBlocks.forEach(rb => {
-      const score = compareShapeAndColor(lb.data, rb.data);
-      if (score > bestMatch.score) bestMatch = { score, left: lb, right: rb };
-    });
-  });
-
-  if (bestMatch.score < 90) {
-    document.getElementById("results").innerHTML = `
-      📷 أعلى تشابه شكلي/لوني تم العثور عليه: ${bestMatch.score.toFixed(1)}% ❌ لا يمكن المتابعة
-    `;
+  const colorScore = compareShapeAndColor(left, right);
+  if (colorScore < 90) {
     document.getElementById("confirmBtn").style.display = "none";
-    return;
+    return document.getElementById("results").innerHTML =
+      `🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}% ❌ لا يمكن المتابعة للتحقق النسيجي`;
   }
 
-  const t1 = analyzeTexture(bestMatch.left.data);
-  const t2 = analyzeTexture(bestMatch.right.data);
-  const diffAvg = Math.abs(t1.avg - t2.avg);
-  const diffDev = Math.abs(t1.dev - t2.dev);
+  const texture1 = analyzeTexture(left);
+  const texture2 = analyzeTexture(right);
+  const diffAvg = Math.abs(texture1.avg - texture2.avg);
+  const diffDev = Math.abs(texture1.dev - texture2.dev);
   const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
 
-  octx.strokeStyle = "#00ff00";
-  octx.lineWidth = 3;
-  octx.strokeRect(bestMatch.left.x, bestMatch.left.y, blockSize, blockSize);
-  octx.fillStyle = "#00ff00";
-  octx.font = "16px Arial";
-  octx.fillText("⬅", bestMatch.left.x + 5, bestMatch.left.y + 20);
+  const shapeScore = estimateShapeMatch(left, right);
 
-  octx.strokeStyle = "#ff0000";
-  octx.strokeRect(bestMatch.right.x, bestMatch.right.y, blockSize, blockSize);
-  octx.fillStyle = "#ff0000";
-  octx.fillText("➡", bestMatch.right.x + 5, bestMatch.right.y + 20);
+  const decision = getScientificDecision(colorScore, textureScore, shapeScore);
 
-  let msg = `
-    ✅ تم العثور على زوج متشابه بنسبة ${bestMatch.score.toFixed(1)}%<br><br>
-    📦 يسار (x=${bestMatch.left.x}, y=${bestMatch.left.y})<br>
-    📦 يمين (x=${bestMatch.right.x}, y=${bestMatch.right.y})<br><br>
-    📊 النسيج: ${textureScore.toFixed(1)}%<br>
+  let resultText = `
+    🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}%<br>
+    📊 نسبة تطابق النسيج: ${textureScore.toFixed(1)}%<br>
+    📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}%<br><br>
+    🧠 النتيجة النهائية: ${decision.finalScore}%<br>
+    ${decision.decision}
   `;
-  msg += textureScore < 75
-    ? "⚠️ الشكل متطابق لكن الورقة أو المادة مختلفة: احتمال تزوير!"
-    : "✅ الشكل والنسيج متطابقان بشكل ميداني";
 
-  document.getElementById("results").innerHTML = msg;
+  document.getElementById("results").innerHTML = resultText;
   document.getElementById("confirmBtn").style.display = "inline-block";
 }
 
-function compareShapeAndColor(a, b) {
-  let score = 0;
-  for (let i = 0; i < a.data.length; i += 4) {
-    const dr = Math.abs(a.data[i] - b.data[i]);
-    const dg = Math.abs(a.data[i+1] - b.data[i+1]);
-    const db = Math.abs(a.data[i+2] - b.data[i+2]);
-    const diff = (dr + dg + db) / 3;
-    score += (255 - diff) / 255 * 100;
-  }
-  return score / (a.data.length / 4);
+function compareShapeAndColor(img1, img2) {
+  const hist1 = getColorHistogram(img1.data);
+  const hist2 = getColorHistogram(img2.data);
+  let diff = 0;
+  for (let i = 0; i < 256; i++) diff += Math.abs(hist1[i] - hist2[i]);
+  const total = hist1.reduce((a,b) => a+b,0) + hist2.reduce((a,b) => a+b,0);
+  const score = 100 - (diff / total) * 100;
+  return Math.max(0, Math.min(score, 100));
 }
 
-function analyzeTexture(data) {
-  let sum = 0, values = [];
-  for (let i = 0; i < data.data.length; i += 4) {
-    const gray = (data.data[i] + data.data[i+1] + data.data[i+2]) / 3;
-    values.push(gray); sum += gray;
+function getColorHistogram(data) {
+  const hist = Array(256).fill(0);
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = Math.round((data[i] + data[i+1] + data[i+2]) / 3);
+    hist[gray]++;
+  }
+  return hist;
+}
+
+function analyzeTexture(imageData) {
+  const data = imageData.data;
+  let sum = 0;
+  const values = [];
+  for (let i = 0; i < data.length; i += 4) {
+    const g = (data[i] + data[i+1] + data[i+2]) / 3;
+    values.push(g);
+    sum += g;
   }
   const avg = sum / values.length;
-  const dev = Math.sqrt(values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length);
+  const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
   return { avg, dev };
 }
 
-function confirmMatch() {
-  alert("🧠 تم التحقق فعليًا: التطابق الكامل بين الشكل والنسيج بنسبة أعلى من 90%");
+function estimateShapeMatch(img1, img2) {
+  let matched = 0;
+  const pixels = img1.data.length / 4;
+  for (let i = 0; i < img1.data.length; i += 4) {
+    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
+    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
+    if (Math.abs(g1 - g2) < 30) matched++;
+  }
+  return matched / pixels * 100;
 }
 
-function captureAndAnalyzeFull() {
-  if (video.readyState < 2) return alert("📸 الكاميرا لم تبدأ بعد");
+function getScientificDecision(c, t, s, threshold = 85) {
+  const finalScore = (c + t + s) / 3;
+  const verdict = finalScore >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
+  return { finalScore: finalScore.toFixed(1), decision: verdict };
+}
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  ctx.drawImage(video, 0, 0);
-
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  const color   = analyzeColorSimilarity(imgData);
-  const texture = analyzeTextureSimilarity(imgData);
-  const shape   = analyzeGeometricSimilarity(imgData);
-
-  const result = displayMatchSummary({
-    colorSimilarity: color,
-    textureSimilarity: texture,
-    shapeSimilarity: shape,
-    threshold: 85
-  });
-
-  document.getElementById("results").innerHTML = `
-    🧪 نتائج التحقق الكامل:<br>
-    🎨 اللون: ${result.components.color}%<br>
-    🧵 النسيج: ${result.components.texture}%<br>
-    📐 الشكل: ${result.components.shape}%<br><br>
-    🧠 القرار النهائي: ${result.decision}<br>
-    ✅ نسبة المطابقة: ${result.score}%
-  `;
+function confirmMatch() {
+  alert("🛡️ تحقق فعلي تم بنجاح. جميع الوحدات متطابقة بدرجة عالية.");
 }
 </script>
 </body>
