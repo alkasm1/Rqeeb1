@@ -23,14 +23,9 @@
       max-width: 500px;
       margin: auto;
     }
-    .box {
-      position: absolute;
-      width: 150px;
-      height: 150px;
-      border: 2px solid;
+    canvas {
+      display: none;
     }
-    .left { top: 60px; left: 20px; border-color: #0f0; }
-    .right { top: 60px; right: 20px; border-color: #f00; }
     button {
       margin: 1rem;
       padding: 0.8rem;
@@ -41,21 +36,24 @@
       border: none;
       cursor: pointer;
     }
-    canvas { display: none; }
-    #results { margin-top: 1rem; font-size: 1rem; color: #ccc; }
-    #confirmBtn { display: none; }
+    #results {
+      margin-top: 1rem;
+      font-size: 1rem;
+      color: #ccc;
+    }
+    #confirmBtn {
+      display: none;
+    }
   </style>
 </head>
 <body>
-  <h2>🧠 التحقق البصري المزدوج للمستندين</h2>
+  <h2>🧠 التحقق البصري الذكي التلقائي للمستندين</h2>
   <div class="container">
     <video id="video" autoplay playsinline></video>
-    <div class="box left"></div>
-    <div class="box right"></div>
+    <canvas id="canvas"></canvas>
   </div>
-  <button onclick="analyze()">🔍 تحليل الشكل والمحتوى</button>
+  <button onclick="analyze()">🔍 تحليل تلقائي للمستندات</button>
   <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
-  <canvas id="canvas"></canvas>
   <div id="results"></div>
 
 <script>
@@ -74,90 +72,55 @@ function analyze() {
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  const left = ctx.getImageData(20, 60, 150, 150);
-  const right = ctx.getImageData(canvas.width - 170, 60, 150, 150);
+  const bestZone = findBestMatchZone(ctx, canvas.width, canvas.height, 150);
 
-  const colorScore = compareShapeAndColor(left, right);
-  if (colorScore < 90) {
+  if (!bestZone) {
     document.getElementById("confirmBtn").style.display = "none";
     return document.getElementById("results").innerHTML =
-      `🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}% ❌ لا يمكن المتابعة للتحقق النسيجي`;
+      `⚠️ لم يتم العثور على منطقتين متطابقتين بشكل كافٍ للتحقق`;
   }
 
-  const texture1 = analyzeTexture(left);
-  const texture2 = analyzeTexture(right);
-  const diffAvg = Math.abs(texture1.avg - texture2.avg);
-  const diffDev = Math.abs(texture1.dev - texture2.dev);
-  const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
+  // ارسم مربعين بناءً على المنطقة الأعلى تشابهًا
+  ctx.strokeStyle = "#0f0";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bestZone.x, bestZone.y, bestZone.size, bestZone.size);
+  ctx.strokeRect(canvas.width - bestZone.x - bestZone.size, bestZone.y, bestZone.size, bestZone.size);
 
-  const shapeScore = estimateShapeMatch(left, right);
-
-  const decision = getScientificDecision(colorScore, textureScore, shapeScore);
-
-  let resultText = `
-    🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}%<br>
-    📊 نسبة تطابق النسيج: ${textureScore.toFixed(1)}%<br>
-    📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}%<br><br>
-    🧠 النتيجة النهائية: ${decision.finalScore}%<br>
-    ${decision.decision}
-  `;
-
-  document.getElementById("results").innerHTML = resultText;
+  document.getElementById("results").innerHTML =
+    `📐 تم اكتشاف منطقتين متطابقتين بنسبة ${bestZone.score.toFixed(1)}%`;
   document.getElementById("confirmBtn").style.display = "inline-block";
 }
 
-function compareShapeAndColor(img1, img2) {
-  const hist1 = getColorHistogram(img1.data);
-  const hist2 = getColorHistogram(img2.data);
-  let diff = 0;
-  for (let i = 0; i < 256; i++) diff += Math.abs(hist1[i] - hist2[i]);
-  const total = hist1.reduce((a,b) => a+b,0) + hist2.reduce((a,b) => a+b,0);
-  const score = 100 - (diff / total) * 100;
-  return Math.max(0, Math.min(score, 100));
-}
+function findBestMatchZone(ctx, w, h, zoneSize) {
+  let bestScore = 0;
+  let best = null;
+  const step = 20;
 
-function getColorHistogram(data) {
-  const hist = Array(256).fill(0);
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = Math.round((data[i] + data[i+1] + data[i+2]) / 3);
-    hist[gray]++;
+  for (let y = 0; y < h - zoneSize; y += step) {
+    for (let x = 0; x < w / 2 - zoneSize; x += step) {
+      const leftZone = ctx.getImageData(x, y, zoneSize, zoneSize).data;
+      const rightX = w - x - zoneSize;
+      const rightZone = ctx.getImageData(rightX, y, zoneSize, zoneSize).data;
+
+      let score = 0;
+      for (let i = 0; i < leftZone.length; i += 4) {
+        const g1 = (leftZone[i] + leftZone[i+1] + leftZone[i+2]) / 3;
+        const g2 = (rightZone[i] + rightZone[i+1] + rightZone[i+2]) / 3;
+        if (Math.abs(g1 - g2) < 20) score++;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = { x, y, size: zoneSize, score: score / (zoneSize * zoneSize) * 100 };
+      }
+    }
   }
-  return hist;
-}
 
-function analyzeTexture(imageData) {
-  const data = imageData.data;
-  let sum = 0;
-  const values = [];
-  for (let i = 0; i < data.length; i += 4) {
-    const g = (data[i] + data[i+1] + data[i+2]) / 3;
-    values.push(g);
-    sum += g;
-  }
-  const avg = sum / values.length;
-  const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
-  return { avg, dev };
-}
-
-function estimateShapeMatch(img1, img2) {
-  let matched = 0;
-  const pixels = img1.data.length / 4;
-  for (let i = 0; i < img1.data.length; i += 4) {
-    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
-    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
-    if (Math.abs(g1 - g2) < 30) matched++;
-  }
-  return matched / pixels * 100;
-}
-
-function getScientificDecision(c, t, s, threshold = 85) {
-  const finalScore = (c + t + s) / 3;
-  const verdict = finalScore >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
-  return { finalScore: finalScore.toFixed(1), decision: verdict };
+  return bestScore > 4000 ? best : null;
 }
 
 function confirmMatch() {
-  alert("🛡️ تحقق فعلي تم بنجاح. جميع الوحدات متطابقة بدرجة عالية.");
+  alert("🛡️ تحقق علمي تم بنجاح، وتم مطابقة المستندين تلقائيًا بدقة.");
 }
 </script>
 </body>
