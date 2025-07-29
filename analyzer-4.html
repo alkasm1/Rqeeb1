@@ -2,69 +2,86 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>تحقق بصري ذكي - Analyzer 4</title>
+  <title>Rqeeb Analyzer</title>
   <style>
-    body { font-family: sans-serif; direction: rtl; text-align: right; background: #f9f9f9; padding: 20px; }
-    .result-box { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 0 10px #ccc; }
-    .decision { font-size: 1.4em; font-weight: bold; margin-bottom: 10px; }
-    .score { color: #333; margin-bottom: 5px; }
-    canvas { margin-top: 15px; border: 1px solid #ddd; }
+    body {
+      background-color: #101010;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    video {
+      width: 320px;
+      height: auto;
+      border: 2px solid white;
+      margin-top: 10px;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      background: #1a1a1a;
+      color: white;
+      border: 1px solid #444;
+      cursor: pointer;
+    }
+    canvas {
+      display: none;
+    }
   </style>
 </head>
 <body>
-  <h1>🧠 نظام التحقق البصري</h1>
-  <input type="file" id="img1" accept="image/*">
-  <input type="file" id="img2" accept="image/*">
-  <button onclick="runVerification()">تحقق الآن</button>
 
-  <div id="result" class="result-box"></div>
-  <canvas id="canvasPreview" width="320" height="320" hidden></canvas>
+  <h1>تحليل مباشر باستخدام الكاميرا 🎥</h1>
 
-  <script src="units/color.js"></script>
-  <script src="units/texture.js"></script>
-  <script src="units/shape.js"></script>
-  <script src="units/display.js"></script>
+  <!-- عرض تصوير مباشر -->
+  <video id="liveCam" autoplay playsinline></video><br>
+  <button onclick="captureFromCamera()">📸 التقط الصورة</button>
 
-  <script>
-    async function loadImage(fileInput) {
-      const file = fileInput.files[0];
-      return await createImageBitmap(file);
-    }
+  <!-- الرسم المؤقت -->
+  <canvas id="snapshotCanvas"></canvas>
 
-    async function runVerification() {
-      const img1 = await loadImage(document.getElementById('img1'));
-      const img2 = await loadImage(document.getElementById('img2'));
+  <!-- مكان عرض النتائج -->
+  <div id="resultContainer"></div>
 
-      // استخراج بيانات الصور (مبسّط)
-      const canvas = document.getElementById('canvasPreview');
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img1, 0, 0, 160, 160);
-      const img1Data = ctx.getImageData(0, 0, 160, 160);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img2, 0, 0, 160, 160);
-      const img2Data = ctx.getImageData(0, 0, 160, 160);
+  <script type="module">
+    import { analyzeColorSimilarity } from './units/color.js';
+    import { analyzeTextureSimilarity } from './units/texture.js';
+    import { analyzeGeometricSimilarity } from './units/shape.js';
+    import { displayMatchSummary } from './units/display.js';
 
-      // التحليل
-      const colorSim   = analyzeColorSimilarity(img1Data, img2Data);
-      const textureSim = analyzeTextureSimilarity(img1Data, img2Data);
-      const shapeSim   = analyzeGeometricSimilarity(img1Data, img2Data);
-
-      const result = displayMatchSummary({
-        colorSimilarity: colorSim,
-        textureSimilarity: textureSim,
-        shapeSimilarity: shapeSim,
-        threshold: 85
+    // تفعيل بث الكاميرا
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        document.getElementById('liveCam').srcObject = stream;
+      })
+      .catch(error => {
+        console.error('تعذر الوصول إلى الكاميرا:', error);
       });
 
-      // العرض
-      document.getElementById('result').innerHTML = `
-        <div class="decision">${result.decision}</div>
-        <div class="score">اللون: ${result.components.color}%</div>
-        <div class="score">النسيج: ${result.components.texture}%</div>
-        <div class="score">الشكل: ${result.components.shape}%</div>
-        <div class="score"><strong>القرار العلمي:</strong> ${result.score}%</div>
-      `;
+    // التقاط وتحليل
+    function captureFromCamera() {
+      const video = document.getElementById('liveCam');
+      const canvas = document.getElementById('snapshotCanvas');
+      const ctx = canvas.getContext('2d');
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      const imageDataURL = canvas.toDataURL('image/png');
+      const img = new Image();
+      img.src = imageDataURL;
+
+      img.onload = () => {
+        const color = analyzeColorSimilarity(img);
+        const texture = analyzeTextureSimilarity(img);
+        const shape = analyzeGeometricSimilarity(img);
+
+        displayMatchSummary({ color, texture, shape });
+      };
     }
   </script>
+
 </body>
 </html>
