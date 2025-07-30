@@ -195,7 +195,24 @@ function getDominantColor(img) {
     b: Math.floor(b / count)
   };
 }
+<script>
+  async function runGeometryPython() {
+    const pyodide = await loadPyodide();
+    const code = `
+def geometry_score(w1, h1, w2, h2):
+    r1 = w1 / h1
+    r2 = w2 / h2
+    diff = abs(r1 - r2)
+    score = 100 - min(diff * 100, 100)
+    return round(score, 2)
+
+geometry_score(800, 600, 790, 610)
+    `;
+    const result = await pyodide.runPythonAsync(code);
+    alert("📐 درجة التشابه الهندسي: " + result + "%");
+  }
 </script>
+
 
 </body>
 </html>
