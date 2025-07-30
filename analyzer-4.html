@@ -1,9 +1,8 @@
-<!-- يمكنك نسخ هذا الكود إلى محرر HTML وتجربته محليًا -->
 <!DOCTYPE html>
 <html lang="ar">
 <head>
-  <meta charset="UTF-8">
-  <title>كشف التزوير البصري الذكي</title>
+  <meta charset="UTF-8" />
+  <title>Live Visual Dual Check</title>
   <style>
     body {
       background: #0b0b0b;
@@ -12,13 +11,17 @@
       text-align: center;
       padding: 1rem;
     }
-    video {
+    video, img {
       width: 100%;
       max-width: 500px;
       border: 2px solid #ff8800;
       margin-bottom: 10px;
     }
-    .container { position: relative; max-width: 500px; margin: auto; }
+    .container {
+      position: relative;
+      max-width: 500px;
+      margin: auto;
+    }
     .box {
       position: absolute;
       width: 220px;
@@ -27,9 +30,9 @@
     }
     .left { top: 50px; left: 10px; border-color: #0f0; }
     .right { top: 50px; right: 10px; border-color: #f00; }
-    button {
-      margin: 1rem;
-      padding: 0.8rem;
+    button, input[type="file"] {
+      margin: 0.5rem;
+      padding: 0.6rem;
       font-size: 1rem;
       border-radius: 8px;
       background: #ff8800;
@@ -43,33 +46,49 @@
   </style>
 </head>
 <body>
-  <h2>🧠 تحقق مزدوج: الشكل + اللون + النسيج + الحواف</h2>
+  <h2>🔎 التحقق البصري للمستندين</h2>
   <div class="container">
     <video id="video" autoplay playsinline></video>
+    <img id="uploadedImage" style="display:none;">
     <div class="box left"></div>
     <div class="box right"></div>
   </div>
-  <button onclick="analyze()">🔍 تحليل المستندات</button>
-  <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق نهائي</button>
+
+  <input type="file" accept="image/*" onchange="handleImageUpload(event)">
+  <button onclick="analyze()">📷 تحليل الشكل والمحتوى</button>
+  <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
   <canvas id="canvas"></canvas>
   <div id="results"></div>
 
 <script>
 const video = document.getElementById("video");
+const uploadedImage = document.getElementById("uploadedImage");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-// تشغيل الكاميرا
-navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+navigator.mediaDevices.getUserMedia({ video: true })
   .then(stream => video.srcObject = stream)
-  .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
+  .catch(() => alert("🚫 فشل تشغيل الكاميرا"));
+
+function handleImageUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    uploadedImage.src = e.target.result;
+    uploadedImage.style.display = "block";
+    video.style.display = "none";
+  };
+  reader.readAsDataURL(file);
+}
 
 function analyze() {
-  if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة");
+  let source = video.style.display === "none" ? uploadedImage : video;
+  if (!source || !canvas || !ctx) return alert("📷 مصدر الصورة غير جاهز");
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  canvas.width = source.videoWidth || source.naturalWidth;
+  canvas.height = source.videoHeight || source.naturalHeight;
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
 
   const boxW = 220, boxH = 220;
   const left = ctx.getImageData(10, 50, boxW, boxH);
@@ -78,28 +97,30 @@ function analyze() {
   const shapeScore = estimateShapeMatch(left, right);
   if (shapeScore < 50) {
     document.getElementById("confirmBtn").style.display = "none";
-    return document.getElementById("results").innerHTML =
-      `📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من الحد الأدنى`;
+    document.getElementById("results").innerHTML =
+      `📐 الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من المطلوب`;
+    return;
   }
 
   const colorScore = compareHSVSimilarity(left.data, right.data);
-  const textureLeft = analyzePaperTexture(left.data);
-  const textureRight = analyzePaperTexture(right.data);
-  const textureScore = 100 - Math.abs(textureLeft.textureEntropy - textureRight.textureEntropy) * 10;
+  const texture1 = analyzeTexture(left);
+  const texture2 = analyzeTexture(right);
+  const diffTexture = Math.abs(texture1.dev - texture2.dev);
+  const textureScore = 100 - Math.min(diffTexture, 100);
 
-  const edgeLeft = analyzeEdgeIntegrity(left.data, boxW, boxH);
-  const edgeRight = analyzeEdgeIntegrity(right.data, boxW, boxH);
-  const edgeScore = 100 - Math.abs(edgeLeft - edgeRight);
+  const edgeScore1 = analyzeEdgeIntegrity(left.data, boxW, boxH);
+  const edgeScore2 = analyzeEdgeIntegrity(right.data, boxW, boxH);
+  const edgeScore = 100 - Math.abs(edgeScore1 - edgeScore2);
 
   const finalScore = ((colorScore + textureScore + edgeScore) / 3).toFixed(1);
-  const decision = finalScore >= 85 ? "✅ تطابق علمي مؤكد" : "⚠️ احتمال وجود تزوير";
+  const verdict = finalScore >= 85 ? "✅ تطابق علمي مؤكد" : "⚠️ احتمال تزوير";
 
   document.getElementById("results").innerHTML = `
     📐 الشكل الهندسي: ${shapeScore.toFixed(1)}% ✅<br>
-    🎨 اللون (HSV): ${colorScore.toFixed(1)}%<br>
-    🧵 النسيج الورقي: ${textureScore.toFixed(1)}%<br>
-    🧱 انتظام الحواف: ${edgeScore.toFixed(1)}%<br><br>
-    🧠 القرار النهائي: ${finalScore}%<br>${decision}
+    🎨 اللون: ${colorScore.toFixed(1)}%<br>
+    🧶 النسيج الورقي: ${textureScore.toFixed(1)}%<br>
+    🧱 الحواف البصرية: ${edgeScore.toFixed(1)}%<br><br>
+    🧠 القرار النهائي: ${finalScore}%<br>${verdict}
   `;
   document.getElementById("confirmBtn").style.display = "inline-block";
 }
@@ -116,56 +137,51 @@ function estimateShapeMatch(img1, img2) {
 }
 
 function compareHSVSimilarity(data1, data2) {
-  function rgbToHsv(r, g, b) {
-    r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const d = max - min;
-    const h = max === min ? 0 :
-      max === r ? ((g - b) / d + (g < b ? 6 : 0)) :
-      max === g ? ((b - r) / d + 2) :
-                  ((r - g) / d + 4);
-    const s = max === 0 ? 0 : d / max;
-    const v = max;
-    return [h / 6 * 360, s * 100, v * 100];
+  function rgbToHsv(r,g,b){
+    r/=255; g/=255; b/=255;
+    let max=Math.max(r,g,b), min=Math.min(r,g,b);
+    let h,s,v=max, d=max-min;
+    s=max===0?0:d/max;
+    if(max===min) h=0;
+    else if(max===r) h=(g-b)/d+(g<b?6:0);
+    else if(max===g) h=(b-r)/d+2;
+    else h=(r-g)/d+4;
+    h=h*60;
+    return [h,s*100,v*100];
   }
 
-  let sumH1=0, sumS1=0, sumV1=0, sumH2=0, sumS2=0, sumV2=0;
-  const pixels = data1.length / 4;
-
-  for (let i = 0; i < data1.length; i += 4) {
-    const [h1,s1,v1] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
-    const [h2,s2,v2] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
-    sumH1 += h1; sumS1 += s1; sumV1 += v1;
-    sumH2 += h2; sumS2 += s2; sumV2 += v2;
+  let h1=0,s1=0,v1=0, h2=0,s2=0,v2=0;
+  const len = data1.length;
+  for(let i=0;i<len;i+=4){
+    let [a,b,c] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
+    h1+=a; s1+=b; v1+=c;
+    [a,b,c] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
+    h2+=a; s2+=b; v2+=c;
   }
-
-  const diffH = Math.abs(sumH1/pixels - sumH2/pixels)/360 * 40;
-  const diffS = Math.abs(sumS1/pixels - sumS2/pixels)/100 * 30;
-  const diffV = Math.abs(sumV1/pixels - sumV2/pixels)/100 * 30;
-  return Math.max(0, 100 - (diffH + diffS + diffV));
+  let pixels = len / 4;
+  let dh=Math.abs(h1/pixels - h2/pixels)/360*40;
+  let ds=Math.abs(s1/pixels - s2/pixels)/100*30;
+  let dv=Math.abs(v1/pixels - v2/pixels)/100*30;
+  return Math.max(0,100-(dh+ds+dv));
 }
 
-function analyzePaperTexture(data) {
-  const gray = [];
-  for (let i = 0; i < data.length; i += 4)
-    gray.push((data[i] + data[i+1] + data[i+2]) / 3);
-
-  const glcm = new Array(256).fill(0);
-  for (let i = 0; i < gray.length - 1; i++)
-    glcm[Math.abs(gray[i] - gray[i+1])]++;
-
-  let contrast=0, homogeneity=0, entropy=0;
-  const total = gray.length - 1;
-  for (let i=0; i<glcm.length; i++) {
-    const p = glcm[i] / total;
-    if (p > 0) {
-      contrast += i * i * p;
-      homogeneity += p / (1 + i);
-      entropy -= p * Math.log2(p);
-    }
+function analyzeTexture(imageData){
+  let values=[], sum=0;
+  const data = imageData.data;
+  for(let i=0;i<data.length;i+=4){
+    let g = (data[i]+data[i+1]+data[i+2])/3;
+    values.push(g);
+    sum += g;
   }
-  return { contrast, homogeneity, textureEntropy: entropy };
+  const avg = sum / values.length;
+  const dev = Math.sqrt(values.reduce((a,v)=>a+Math.pow(v-avg,2),0)/values.length);
+  return { avg, dev };
 }
 
-function analyzeEdgeIntegrity(data, width, height) {
-  const sobelX = [-1,0
+function analyzeEdgeIntegrity(data, width, height){
+  const sobelX = [-1,0,1,-2,0,2,-1,0,1];
+  const sobelY = [-1,-2,-1,0,0,0,1,2,1];
+  let total = 0;
+  function getGray(x,y){
+    let i = (y*width + x)*4;
+    return (data[i]+data[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/JohnChernoff/mole-client/tree/73e5fdb7af801123eab5014afc79b20a07a27515/js%2Fcolors.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/pointofpresence/pixla/tree/b401b2afc51749123b283839ad3322680e4f3b31/src%2Fjs%2Flib%2FBuffer.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "2")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/PackageForge/Color/tree/7da4b67c12d59416512c3d60547cace14624bccb/projects%2Fcolor%2Fsrc%2Flib%2Fcolor.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "3")
