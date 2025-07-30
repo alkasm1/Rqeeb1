@@ -151,15 +151,17 @@ function compareHSVSimilarity(data1, data2) {
   return Math.max(0, score);
 }
 
-function analyzeTexture(imageData) {
-  const data = imageData.data;
-  let sum = 0;
-  const values = [];
-  for (let i = 0; i < data.length; i += 4) {
-    const g = (data[i] + data[i+1] + data[i+2]) / 3;
-    values.push(g);
-    sum += g;
-  }
+function analyzeTexture(imageData) {if (imgLeft.src && imgRight.src) 
+  ctx.drawImage(imgLeft, 0, 0, canvas.width, canvas.height);
+  const left = ctx.getImageData(10, 50, 220, 220);
+  ctx.drawImage(imgRight, 0, 0, canvas.width, canvas.height);
+  const right = ctx.getImageData(canvas.width - 230, 50, 220, 220);
+} else {
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const left = ctx.getImageData(10, 50, 220, 220);
+  const right = ctx.getImageData(canvas.width - 230, 50, 220, 220);
+}
+  
   const avg = sum / values.length;
   const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
   return { avg, dev };
@@ -175,7 +177,22 @@ function estimateShapeMatch(img1, img2) {
   }
   return matched / pixels * 100;
 }
-
+function loadImage(event, targetId) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById(targetId);
+    img.src = e.target.result;
+    img.onload = () => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+    };
+    img.style.display = "none";
+  };
+  reader.readAsDataURL(file);
+}
 function getScientificDecision(color, texture, threshold = 85) {
   const score = (color + texture) / 2;
   const verdict = score >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
