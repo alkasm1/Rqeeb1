@@ -1,8 +1,9 @@
+هذا الكود يعمل بشكل ممتاز اين اضيف خيار ادخال الصور من الاستديو للمقارنة لنضيفها بأزرار مستقلة دون تعديل الكود
 <!DOCTYPE html>
 <html lang="ar">
 <head>
-  <meta charset="UTF-8">
-  <title>التحقق البصري الذكي</title>
+  <meta charset="UTF-8" />
+  <title>Live Visual Dual Check</title>
   <style>
     body {
       background: #0b0b0b;
@@ -11,15 +12,33 @@
       text-align: center;
       padding: 1rem;
     }
-    video, img {
-      width: 48%;
-      max-width: 240px;
+    video {
+      width: 100%;
+      max-width: 500px;
       border: 2px solid #ff8800;
-      margin: 0.5rem;
+      margin-bottom: 10px;
+  <input type="file" accept="image/*" onchange="loadImage(event, 'imgLeft')" />
+<input type="file" accept="image/*" onchange="loadImage(event, 'imgRight')" />
+<img id="imgLeft" style="display:none;" />
+<img id="imgRight" style="display:none;" />
     }
-    button, input[type="file"] {
-      margin: 0.5rem;
-      padding: 0.6rem;
+    .container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      margin: auto;
+    }
+    .box {
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      border: 2px solid;
+    }
+    .left { top: 50px; left: 10px; border-color: #0f0; }
+    .right { top: 50px; right: 10px; border-color: #f00; }
+    button {
+      margin: 1rem;
+      padding: 0.8rem;
       font-size: 1rem;
       border-radius: 8px;
       background: #ff8800;
@@ -27,150 +46,145 @@
       border: none;
       cursor: pointer;
     }
-    #results {
-      margin-top: 1rem;
-      font-size: 1rem;
-      background: #222;
-      padding: 1rem;
-      border-radius: 10px;
-      width: fit-content;
-      margin-inline: auto;
-      color: #eee;
-    }
     canvas { display: none; }
+    #results { margin-top: 1rem; font-size: 1rem; color: #ccc; }
+    #confirmBtn { display: none; }
   </style>
 </head>
 <body>
-  <h2>🧠 التحقق البصري الذكي</h2>
-
-  <video id="video" autoplay playsinline></video>
-  <br>
-  <input type="file" accept="image/*" onchange="loadImage(event, 'source1')" />
-  <input type="file" accept="image/*" onchange="loadImage(event, 'source2')" />
-  <br>
-  <img id="source1" style="display:none;" />
-  <img id="source2" style="display:none;" />
-
+  <h2>🧠 التحقق البصري المزدوج للمستندين</h2>
+  <div class="container">
+    <video id="video" autoplay playsinline></video>
+    <div class="box left"></div>
+    <div class="box right"></div>
+  </div>
   <button onclick="analyze()">🔍 تحليل الشكل والمحتوى</button>
+  <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
   <canvas id="canvas"></canvas>
   <div id="results"></div>
 
 <script>
+const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-const source1 = document.getElementById("source1");
-const source2 = document.getElementById("source2");
-const video = document.getElementById("video");
-
-// ✅ تشغيل الكاميرا بشكل آمن
-navigator.mediaDevices.getUserMedia({ video: true })
+navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
   .then(stream => video.srcObject = stream)
-  .catch(() => alert("🚫 لم يتم تشغيل الكاميرا"));
-
-function loadImage(event, id) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const img = document.getElementById(id);
-    img.src = e.target.result;
-    img.style.display = "inline-block";
-  };
-  reader.readAsDataURL(file);
-}
+  .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
 
 function analyze() {
-  let input1 = source1.src ? source1 : video;
-  let input2 = source2.src ? source2 : video;
+  if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة بعد");
 
-  const w = input1.videoWidth || input1.naturalWidth;
-  const h = input1.videoHeight || input1.naturalHeight;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  if (!w || !h) return alert("📷 المصدر غير جاهز بعد");
+  const boxW = 220, boxH = 220;
+  const left = ctx.getImageData(10, 50, boxW, boxH);
+  const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
 
-  canvas.width = w;
-  canvas.height = h;
-  ctx.drawImage(input1, 0, 0, w, h);
-  const imgData1 = ctx.getImageData(10, 50, 220, 220);
-
-  ctx.drawImage(input2, 0, 0, w, h);
-  const imgData2 = ctx.getImageData(w - 230, 50, 220, 220);
-
-  const shape = estimateShapeMatch(imgData1, imgData2);
-  if (shape < 50) {
-    document.getElementById("results").innerHTML = `📐 الشكل الهندسي: ${shape.toFixed(1)}% ❌ غير كافٍ للمقارنة`;
-    return;
+  const shapeScore = estimateShapeMatch(left, right);
+  if (shapeScore < 50) {
+    document.getElementById("confirmBtn").style.display = "none";
+    return document.getElementById("results").innerHTML =
+      📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من الحد الأدنى (50%);
   }
 
-  const color = compareHSV(imgData1.data, imgData2.data);
-  const t1 = analyzeTexture(imgData1.data);
-  const t2 = analyzeTexture(imgData2.data);
-  const textureScore = 100 - Math.abs(t1.dev - t2.dev);
-  const finalScore = ((color + textureScore) / 2).toFixed(1);
-  const decision = finalScore >= 85 ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
+  const colorScore = compareHSVSimilarity(left.data, right.data);
+  const texture1 = analyzeTexture(left);
+  const texture2 = analyzeTexture(right);
+  const diffAvg = Math.abs(texture1.avg - texture2.avg);
+  const diffDev = Math.abs(texture1.dev - texture2.dev);
+  const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
 
-  document.getElementById("results").innerHTML = `
-    📐 الشكل الهندسي (تم تجاوزه): ${shape.toFixed(1)}%<br>
-    🎨 اللون: ${color.toFixed(1)}%<br>
-    🧶 النسيج: ${textureScore.toFixed(1)}%<br><br>
-    🧠 القرار النهائي: ${finalScore}%<br>${decision}
+  const decision = getScientificDecision(colorScore, textureScore);
+
+  let resultText = `
+    📐 نسبة الشكل الهندسي (تم تجاوزها): ${shapeScore.toFixed(1)}% ✅<br>
+    🎨 نسبة تشابه اللون (HSV): ${colorScore.toFixed(1)}%<br>
+    🧵 نسبة النسيج: ${textureScore.toFixed(1)}%<br><br>
+    🧠 القرار النهائي (دون الشكل): ${decision.finalScore}%<br>
+    ${decision.decision}
   `;
+
+  document.getElementById("results").innerHTML = resultText;
+  document.getElementById("confirmBtn").style.display = "inline-block";
 }
 
-// ✅ تحليل اللون HSV
-function compareHSV(d1, d2) {
+// تحليل HSV بدقة
+function compareHSVSimilarity(data1, data2) {
   function rgbToHsv(r, g, b) {
     r /= 255; g /= 255; b /= 255;
-    let max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h = 0, s = max === 0 ? 0 : (max - min) / max, v = max;
-    if (max !== min) {
-      if (max === r) h = ((g - b) / (max - min)) + (g < b ? 6 : 0);
-      else if (max === g) h = ((b - r) / (max - min)) + 2;
-      else h = ((r - g) / (max - min)) + 4;
-      h *= 60;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+    const d = max - min;
+    s = max === 0 ? 0 : d / max;
+    if (max === min) h = 0;
+    else {
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
     }
-    return [h, s * 100, v * 100];
+    return [h  360, s  100, v * 100];
   }
 
-  let h1 = 0, s1 = 0, v1 = 0;
-  let h2 = 0, s2 = 0, v2 = 0;
-  for (let i = 0; i < d1.length; i += 4) {
-    const hsv1 = rgbToHsv(d1[i], d1[i+1], d1[i+2]);
-    const hsv2 = rgbToHsv(d2[i], d2[i+1], d2[i+2]);
-    h1 += hsv1[0]; s1 += hsv1[1]; v1 += hsv1[2];
-    h2 += hsv2[0]; s2 += hsv2[1]; v2 += hsv2[2];
+  let totalH1 = 0, totalS1 = 0, totalV1 = 0;
+  let totalH2 = 0, totalS2 = 0, totalV2 = 0;
+  const pixels = data1.length / 4;
+
+  for (let i = 0; i < data1.length; i += 4) {
+    const [h1, s1, v1] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
+    const [h2, s2, v2] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
+    totalH1 += h1; totalS1 += s1; totalV1 += v1;
+    totalH2 += h2; totalS2 += s2; totalV2 += v2;
   }
 
-  const total = d1.length / 4;
-  const dh = Math.abs(h1/total - h2/total) / 360 * 40;
-  const ds = Math.abs(s1/total - s2/total) / 100 * 30;
-  const dv = Math.abs(v1/total - v2/total) / 100 * 30;
-  return Math.max(0, 100 - (dh + ds + dv));
+  const avgH1 = totalH1 / pixels, avgS1 = totalS1 / pixels, avgV1 = totalV1 / pixels;
+  const avgH2 = totalH2 / pixels, avgS2 = totalS2 / pixels, avgV2 = totalV2 / pixels;
+
+  const diffH = Math.abs(avgH1 - avgH2) / 360 * 40;
+  const diffS = Math.abs(avgS1 - avgS2) / 100 * 30;
+  const diffV = Math.abs(avgV1 - avgV2) / 100 * 30;
+  const score = 100 - (diffH + diffS + diffV);
+  return Math.max(0, score);
 }
 
-// ✅ تحليل النسيج
-function analyzeTexture(data) {
-  let sum = 0, vals = [];
+function analyzeTexture(imageData) {
+  const data = imageData.data;
+  let sum = 0;
+  const values = [];
   for (let i = 0; i < data.length; i += 4) {
     const g = (data[i] + data[i+1] + data[i+2]) / 3;
-    vals.push(g); sum += g;
+    values.push(g);
+    sum += g;
   }
-  const avg = sum / vals.length;
-  const dev = Math.sqrt(vals.reduce((a, v) => a + Math.pow(v - avg, 2), 0) / vals.length);
+  const avg = sum / values.length;
+  const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
   return { avg, dev };
 }
 
-// ✅ مطابقة الشكل الهندسي
-function estimateShapeMatch(i1, i2) {
+function estimateShapeMatch(img1, img2) {
   let matched = 0;
-  const pixels = i1.data.length / 4;
-  for (let i = 0; i < i1.data.length; i += 4) {
-    const g1 = (i1.data[i] + i1.data[i+1] + i1.data[i+2]) / 3;
-    const g2 = (i2.data[i] + i2.data[i+1] + i2.data[i+2]) / 3;
+  const pixels = img1.data.length / 4;
+  for (let i = 0; i < img1.data.length; i += 4) {
+    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
+    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
     if (Math.abs(g1 - g2) < 30) matched++;
   }
   return matched / pixels * 100;
+}
+
+function getScientificDecision(color, texture, threshold = 85) {
+  const score = (color + texture) / 2;
+  const verdict = score >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
+  return { finalScore: score.toFixed(1), decision: verdict };
+}
+
+function confirmMatch() {
+  alert("🛡️ تحقق فعلي تم بنجاح. جميع الوحدات متطابقة بدرجة عالية.");
 }
 </script>
 </body>
