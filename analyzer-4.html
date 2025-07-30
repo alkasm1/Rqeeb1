@@ -2,28 +2,21 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
-  <title>كشف التزوير الذكي</title>
+  <title>التحقق البصري المزدوج</title>
   <style>
     body {
-      background: #111;
+      background: #121212;
       color: #ff8800;
       font-family: 'Cairo', sans-serif;
       text-align: center;
+      padding: 1rem;
     }
     video, img {
-      width: 100%;
-      max-width: 500px;
+      width: 48%;
+      max-width: 250px;
       border: 2px solid #ff8800;
-      margin: 1rem 0;
+      margin: 0.5rem;
     }
-    .box {
-      position: absolute;
-      width: 220px;
-      height: 220px;
-      border: 2px solid;
-    }
-    .left { top: 50px; left: 10px; border-color: #0f0; }
-    .right { top: 50px; right: 10px; border-color: #f00; }
     button, input[type="file"] {
       margin: 0.5rem;
       padding: 0.6rem;
@@ -39,88 +32,105 @@
       margin-top: 1rem;
       padding: 10px;
       font-size: 1rem;
-      color: #eee;
       background: #222;
       border-radius: 8px;
+      color: #eee;
       width: fit-content;
       margin-inline: auto;
     }
   </style>
 </head>
 <body>
-  <h2>🔍 كشف التزوير الذكي للمستندات</h2>
-
+  <h2>🧠 التحقق البصري الذكي</h2>
+  
   <video id="video" autoplay playsinline></video>
-  <img id="uploadedImage" style="display:none;" />
-  <input type="file" accept="image/*" onchange="handleUpload(event)">
-  <button onclick="analyze()">تحليل الصورة</button>
+  <br>
+
+  <input type="file" accept="image/*" onchange="loadOriginal(event)" />
+  <input type="file" accept="image/*" onchange="loadTarget(event)" />
+  <br>
+  <img id="originalImg" style="display:none;" />
+  <img id="targetImg" style="display:none;" />
+
+  <button onclick="analyze()">🔍 تحليل</button>
   <div id="results"></div>
   <canvas id="canvas"></canvas>
 
 <script>
 const video = document.getElementById("video");
-const img = document.getElementById("uploadedImage");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-// ✅ تفعيل الكاميرا
+const originalImg = document.getElementById("originalImg");
+const targetImg = document.getElementById("targetImg");
+
 navigator.mediaDevices.getUserMedia({ video: true })
   .then(stream => video.srcObject = stream)
-  .catch(() => alert("📷 الكاميرا غير مدعومة"));
+  .catch(() => alert("🚫 فشل تشغيل الكاميرا"));
 
-function handleUpload(e) {
+function loadOriginal(e) {
   const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    img.src = ev.target.result;
-    img.style.display = "block";
-    video.style.display = "none";
-  };
-  reader.readAsDataURL(file);
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      originalImg.src = ev.target.result;
+      originalImg.style.display = "inline-block";
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function loadTarget(e) {
+  const file = e.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      targetImg.src = ev.target.result;
+      targetImg.style.display = "inline-block";
+    };
+    reader.readAsDataURL(file);
+  }
 }
 
 function analyze() {
-  const source = video.style.display === "none" ? img : video;
-  if (!source) return;
+  let source1, source2;
 
-  const w = source.videoWidth || source.naturalWidth;
-  const h = source.videoHeight || source.naturalHeight;
+  if (originalImg.src && targetImg.src) {
+    source1 = originalImg;
+    source2 = targetImg;
+  } else {
+    source1 = video;
+    source2 = video;
+  }
+
+  const w = source1.videoWidth || source1.naturalWidth;
+  const h = source1.videoHeight || source1.naturalHeight;
   canvas.width = w;
   canvas.height = h;
-  ctx.drawImage(source, 0, 0, w, h);
 
-  const boxW = 220, boxH = 220;
-  const left = ctx.getImageData(10, 50, boxW, boxH);
-  const right = ctx.getImageData(w - boxW - 10, 50, boxW, boxH);
+  ctx.drawImage(source1, 0, 0, w, h);
+  const imgData1 = ctx.getImageData(10, 50, 220, 220);
 
-  const shape = estimateShapeMatch(left, right);
-  if (shape < 50)
-    return document.getElementById("results").innerHTML = `📐 الشكل الهندسي: ${shape.toFixed(1)}% ❌ لا يمكن المقارنة`;
+  ctx.drawImage(source2, 0, 0, w, h);
+  const imgData2 = ctx.getImageData(w - 230, 50, 220, 220);
 
-  const color = compareHSV(left.data, right.data);
-  const texture1 = analyzeTexture(left.data);
-  const texture2 = analyzeTexture(right.data);
+  const shape = estimateShapeMatch(imgData1, imgData2);
+  const color = compareHSV(imgData1.data, imgData2.data);
+  const texture1 = analyzeTexture(imgData1.data);
+  const texture2 = analyzeTexture(imgData2.data);
   const textureDiff = Math.abs(texture1.dev - texture2.dev);
   const texture = 100 - Math.min(textureDiff, 100);
-
-  const edge1 = analyzeEdges(left.data, boxW, boxH);
-  const edge2 = analyzeEdges(right.data, boxW, boxH);
-  const edge = 100 - Math.abs(edge1 - edge2);
-
-  const finalScore = ((color + texture + edge) / 3).toFixed(1);
+  const finalScore = ((color + texture) / 2).toFixed(1);
   const decision = finalScore >= 85 ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
 
   document.getElementById("results").innerHTML = `
-    📐 الشكل الهندسي (تم تجاوزه): ${shape.toFixed(1)}%<br>
+    📐 الشكل الهندسي: ${shape.toFixed(1)}%<br>
     🎨 اللون (HSV): ${color.toFixed(1)}%<br>
-    🧶 النسيج: ${texture.toFixed(1)}%<br>
-    🧱 الحواف البصرية: ${edge.toFixed(1)}%<br><br>
+    🧶 النسيج: ${texture.toFixed(1)}%<br><br>
     🧠 القرار النهائي: ${finalScore}%<br>${decision}
   `;
 }
 
-// ✅ تحليل HSV
 function compareHSV(data1, data2) {
   function rgbToHsv(r,g,b){
     r/=255; g/=255; b/=255;
@@ -150,7 +160,6 @@ function compareHSV(data1, data2) {
   return Math.max(0, 100 - (dh + ds + dv));
 }
 
-// ✅ تحليل النسيج
 function analyzeTexture(data){
   let sum = 0, values = [];
   for(let i=0; i<data.length; i+=4){
@@ -163,7 +172,6 @@ function analyzeTexture(data){
   return { avg, dev };
 }
 
-// ✅ الشكل الهندسي
 function estimateShapeMatch(img1, img2){
   let matched = 0, pixels = img1.data.length / 4;
   for(let i = 0; i < img1.data.length; i += 4){
@@ -173,18 +181,6 @@ function estimateShapeMatch(img1, img2){
   }
   return matched / pixels * 100;
 }
-
-// ✅ تحليل الحواف (Sobel X + Y)
-function analyzeEdges(data,w,h){
-  const sobelX = [-1,0,1,-2,0,2,-1,0,1];
-  const sobelY = [-1,-2,-1,0,0,0,1,2,1];
-  function g(x,y){
-    let i=(y*w+x)*4;
-    return (data[i]+data[i+1]+data[i+2])/3;
-  }
-  let total=0;
-  for(let y=1; y<h-1; y++){
-    for(let x=1;x<w-1;x++){
-      let gx=0, gy=0, idx=0;
-      for(let ky=-1;ky<=1;ky++){
-        for
+</script>
+</body>
+</html>
