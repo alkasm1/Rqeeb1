@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
-  <title>Live Visual Dual Check</title>
+  <title>التحقق البصري الذكي للمستندين</title>
   <style>
     body {
       background: #0b0b0b;
@@ -23,14 +23,6 @@
       max-width: 500px;
       margin: auto;
     }
-    .box {
-      position: absolute;
-      width: 220px;
-      height: 220px;
-      border: 2px solid;
-    }
-    .left { top: 50px; left: 10px; border-color: #0f0; }
-    .right { top: 50px; right: 10px; border-color: #f00; }
     button {
       margin: 1rem;
       padding: 0.8rem;
@@ -42,20 +34,23 @@
       cursor: pointer;
     }
     canvas { display: none; }
-    #results { margin-top: 1rem; font-size: 1rem; color: #ccc; }
+    #results, #status {
+      margin-top: 1rem;
+      font-size: 1rem;
+      color: #ccc;
+    }
     #confirmBtn { display: none; }
   </style>
 </head>
 <body>
-  <h2>🧠 التحقق البصري المزدوج للمستندين</h2>
+  <h2>🧠 التحقق البصري الذكي للمستندين</h2>
   <div class="container">
     <video id="video" autoplay playsinline></video>
-    <div class="box left"></div>
-    <div class="box right"></div>
   </div>
   <button onclick="analyze()">🔍 تحليل الشكل والمحتوى</button>
   <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
   <canvas id="canvas"></canvas>
+  <div id="status"></div>
   <div id="results"></div>
 
 <script>
@@ -67,31 +62,50 @@ navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
   .then(stream => video.srcObject = stream)
   .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
 
+function confirmMatch() {
+  alert("🛡️ تحقق فعلي تم بنجاح. جميع الوحدات متطابقة بدرجة عالية.");
+}
+
 function analyze() {
   if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة بعد");
-
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { leftShape, rightShape } = detectMatchingShapes(imageData);
 
-  const boxW = 220, boxH = 220;
-  const left = ctx.getImageData(10, 50, boxW, boxH);
-  const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
-
-  const shapeScore = estimateShapeMatch(left, right);
-  if (shapeScore < 50) {
-    document.getElementById("confirmBtn").style.display = "none";
-    return document.getElementById("results").innerHTML =
-      `📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من الحد الأدنى (50%)`;
+  if (!leftShape || !rightShape) {
+    document.getElementById("results").innerHTML = "❌ لم يتم العثور على شكلين هندسيين متشابهين";
+    return;
   }
 
-  const colorScore = compareHSVSimilarity(left.data, right.data);
-  const texture1 = analyzeTexture(left);
-  const texture2 = analyzeTexture(right);
+  ctx.strokeStyle = "#0f0";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(leftShape.x, leftShape.y, leftShape.w, leftShape.h);
+
+  ctx.strokeStyle = "#f00";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(rightShape.x, rightShape.y, rightShape.w, rightShape.h);
+
+  document.getElementById("status").innerText = "✅ تم اختيار شكلين هندسيين تلقائيًا للتحليل";
+
+  const leftData = ctx.getImageData(leftShape.x, leftShape.y, leftShape.w, leftShape.h);
+  const rightData = ctx.getImageData(rightShape.x, rightShape.y, rightShape.w, rightShape.h);
+
+  const shapeScore = estimateShapeMatch(leftData, rightData);
+  if (shapeScore < 50) {
+    document.getElementById("confirmBtn").style.display = "none";
+    document.getElementById("results").innerHTML =
+      `📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من الحد الأدنى (50%)`;
+    return;
+  }
+
+  const colorScore = compareHSVSimilarity(leftData.data, rightData.data);
+  const texture1 = analyzeTexture(leftData);
+  const texture2 = analyzeTexture(rightData);
   const diffAvg = Math.abs(texture1.avg - texture2.avg);
   const diffDev = Math.abs(texture1.dev - texture2.dev);
   const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
-
   const decision = getScientificDecision(colorScore, textureScore);
 
   let resultText = `
@@ -101,12 +115,74 @@ function analyze() {
     🧠 القرار النهائي (دون الشكل): ${decision.finalScore}%<br>
     ${decision.decision}
   `;
-
   document.getElementById("results").innerHTML = resultText;
   document.getElementById("confirmBtn").style.display = "inline-block";
 }
 
-// تحليل HSV بدقة
+function detectMatchingShapes(imageData) {
+  const { width, height, data } = imageData;
+  const gray = new Uint8ClampedArray(width * height);
+  for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+    gray[j] = (data[i] + data[i+1] + data[i+2]) / 3;
+  }
+
+  const sobel = new Uint8ClampedArray(gray.length);
+  const gx = [-1,0,1,-2,0,2,-1,0,1];
+  const gy = [-1,-2,-1,0,0,0,1,2,1];
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let px = 0, py = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const idx = (y + ky) * width + (x + kx);
+          const weightX = gx[(ky + 1) * 3 + (kx + 1)];
+          const weightY = gy[(ky + 1) * 3 + (kx + 1)];
+          px += gray[idx] * weightX;
+          py += gray[idx] * weightY;
+        }
+      }
+      const mag = Math.sqrt(px * px + py * py);
+      sobel[y * width + x] = mag > 100 ? 255 : 0;
+    }
+  }
+
+  function findBoxes(startX, endX) {
+    const shapes = [];
+    for (let y = 0; y < height - 30; y += 10) {
+      for (let x = startX; x < endX - 30; x += 10) {
+        let count = 0;
+        for (let dy = 0; dy < 30; dy++) {
+          for (let dx = 0; dx < 30; dx++) {
+            const idx = (y + dy) * width + (x + dx);
+            if (sobel[idx] === 255) count++;
+          }
+        }
+        if (count > 300) shapes.push({ x, y, w: 30, h: 30, score: count });
+      }
+    }
+    return shapes;
+  }
+
+  const mid = Math.floor(width / 2);
+  const leftShapes = findBoxes(0, mid);
+  const rightShapes = findBoxes(mid, width);
+
+  let bestPair = null;
+  let minDiff = Infinity;
+  for (let l of leftShapes) {
+    for (let r of rightShapes) {
+      const diff = Math.abs(l.score - r.score);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestPair = { leftShape: l, rightShape: r };
+      }
+    }
+  }
+
+  return bestPair || { leftShape: null, rightShape: null };
+}
+
 function compareHSVSimilarity(data1, data2) {
   function rgbToHsv(r, g, b) {
     r /= 255; g /= 255; b /= 255;
@@ -119,68 +195,4 @@ function compareHSVSimilarity(data1, data2) {
       switch (max) {
         case r: h = (g - b) / d + (g < b ? 6 : 0); break;
         case g: h = (b - r) / d + 2; break;
-        case b: h = (r - g) / d + 4; break;
-      }
-      h /= 6;
-    }
-    return [h * 360, s * 100, v * 100];
-  }
-
-  let totalH1 = 0, totalS1 = 0, totalV1 = 0;
-  let totalH2 = 0, totalS2 = 0, totalV2 = 0;
-  const pixels = data1.length / 4;
-
-  for (let i = 0; i < data1.length; i += 4) {
-    const [h1, s1, v1] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
-    const [h2, s2, v2] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
-    totalH1 += h1; totalS1 += s1; totalV1 += v1;
-    totalH2 += h2; totalS2 += s2; totalV2 += v2;
-  }
-
-  const avgH1 = totalH1 / pixels, avgS1 = totalS1 / pixels, avgV1 = totalV1 / pixels;
-  const avgH2 = totalH2 / pixels, avgS2 = totalS2 / pixels, avgV2 = totalV2 / pixels;
-
-  const diffH = Math.abs(avgH1 - avgH2) / 360 * 40;
-  const diffS = Math.abs(avgS1 - avgS2) / 100 * 30;
-  const diffV = Math.abs(avgV1 - avgV2) / 100 * 30;
-  const score = 100 - (diffH + diffS + diffV);
-  return Math.max(0, score);
-}
-
-function analyzeTexture(imageData) {
-  const data = imageData.data;
-  let sum = 0;
-  const values = [];
-  for (let i = 0; i < data.length; i += 4) {
-    const g = (data[i] + data[i+1] + data[i+2]) / 3;
-    values.push(g);
-    sum += g;
-  }
-  const avg = sum / values.length;
-  const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
-  return { avg, dev };
-}
-
-function estimateShapeMatch(img1, img2) {
-  let matched = 0;
-  const pixels = img1.data.length / 4;
-  for (let i = 0; i < img1.data.length; i += 4) {
-    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
-    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
-    if (Math.abs(g1 - g2) < 30) matched++;
-  }
-  return matched / pixels * 100;
-}
-
-function getScientificDecision(color, texture, threshold = 85) {
-  const score = (color + texture) / 2;
-  const verdict = score >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
-  return { finalScore: score.toFixed(1), decision: verdict };
-}
-
-function confirmMatch() {
-  alert("🛡️ تحقق فعلي تم بنجاح. جميع الوحدات متطابقة بدرجة عالية.");
-}
-</script>
-</body>
-</html>
+        case b: h =[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/AlexUlianets/WH_project/tree/8c4c3575f69f17ab853e50604568cac5736dcfe4/src%2Fapp%2Fservices%2Fhsl.color.service.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/SEUNAKINTOLA/Mini-unsplash-clone/tree/f49b3e19b20c63678f336cb03775a08b5324b7da/Mini%20unsplash%20clone%2FClientApp%2Fsrc%2Fapp%2Fshared%2Fcommon%2Futil.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "2")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/riophae/what-color-is-it/tree/7e8a17f73bb33af3b10bc3b2b95a2f30b5d6b42b/colz.class.min.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "3")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/HelKyle/antd-multi-cascader/tree/f7217a51ae8b86f3f7838e0d726bc90acd6394f2/docs%2Fvendors~main.f9a871f0.iframe.bundle.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "4")
