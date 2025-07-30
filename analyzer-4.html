@@ -79,7 +79,7 @@ function analyze() {
   const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
 
   const colorScore = compareShapeAndColor(left, right);
-  if (colorScore < 90) {
+  if (colorScore < 80) {
     document.getElementById("confirmBtn").style.display = "none";
     return document.getElementById("results").innerHTML =
       `🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}% ❌ لا يمكن المتابعة للتحقق النسيجي`;
