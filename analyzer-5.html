@@ -2,19 +2,18 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
-  <title>تحقق ومطابقة نسيج | Rqeeb</title>
+  <title>RQEEB | كشف التزوير البصري</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="src/style.css" />
   <style>
     body {
-      background: #0b0b0b;
-      color: #ff8800;
-      font-family: 'Tajawal', Arial, sans-serif;
+      background: #111;
+      color: #ffa500;
+      font-family: 'Tajawal', sans-serif;
       text-align: center;
       padding: 2rem;
     }
     .card {
-      background: #1c1c1c;
+      background: #1e1e1e;
       padding: 1rem;
       margin: 1rem auto;
       border-radius: 12px;
@@ -30,27 +29,33 @@
       border: none;
     }
     button {
-      background: #ff8800;
-      color: #fff;
+      background: #ffa500;
+      color: #000;
       cursor: pointer;
     }
     button:hover {
-      background: #e67600;
+      background: #e69500;
     }
-    #resultMessage {
+    #results {
       margin-top: 20px;
-      font-size: 1.2rem;
+      font-size: 1.1rem;
+      text-align: right;
       color: #fff;
     }
     progress {
       width: 100%;
       margin-top: 10px;
     }
+    footer {
+      margin-top: 30px;
+      font-size: 0.9em;
+      color: #777;
+    }
   </style>
 </head>
 <body>
 
-  <h1>🧬 تحقق ومطابقة نسيج من صورتين</h1>
+  <h1>🔬 RQEEB — تحليل متقدم للتزوير</h1>
 
   <div class="card">
     <h3>📁 اختيار الأصل</h3>
@@ -67,101 +72,128 @@
   </div>
 
   <div class="card">
-    <button onclick="startTextureCompare()">🔍 تحليل ومطابقة النسيج</button>
-    <div id="resultMessage">👁️ بانتظار اختيار الملفات...</div>
-    <progress id="matchProgress" value="0" max="100"></progress>
+    <button onclick="startFullAnalysis()">🧪 البدء بالتحليل الكامل</button>
+    <div id="results">👁️ بانتظار الملفات...</div>
+    <progress id="progressBar" value="0" max="100"></progress>
   </div>
 
+  <footer>
+    م: رأفت عمر — RQEEB Project © 2025
+  </footer>
+
 <script>
-async function startTextureCompare() {
-  const original = document.getElementById('originalCam').files[0]
+async function startFullAnalysis() {
+  const img1File = document.getElementById('originalCam').files[0]
     || document.getElementById('originalFile').files[0];
-  const check = document.getElementById('checkCam').files[0]
+  const img2File = document.getElementById('checkCam').files[0]
     || document.getElementById('checkFile').files[0];
 
-  const result = document.getElementById("resultMessage");
-  const progress = document.getElementById("matchProgress");
+  const resultBox = document.getElementById("results");
+  const bar = document.getElementById("progressBar");
 
-  if (!original || !check) {
-    result.innerText = "⚠️ يرجى اختيار أو تصوير الملفين أولًا";
+  if (!img1File || !img2File) {
+    resultBox.innerHTML = "⚠️ الرجاء اختيار أو تصوير كلا الصورتين أولًا.";
     return;
   }
 
-  result.innerText = "⏳ جاري التحليل النسيجي...";
+  resultBox.innerHTML = "⏳ جاري التحليل...";
 
   try {
-    const img1 = await loadImage(original);
-    const img2 = await loadImage(check);
+    const img1 = await loadImage(img1File);
+    const img2 = await loadImage(img2File);
 
-    const stats1 = analyzeImage(img1);
-    const stats2 = analyzeImage(img2);
+    // تحليل نسيج
+    const texture1 = analyzeSobel(img1);
+    const texture2 = analyzeSobel(img2);
+    const textureDiff = Math.abs(texture1.avg - texture2.avg) + Math.abs(texture1.dev - texture2.dev);
 
-    const diffAvg = Math.abs(stats1.avg - stats2.avg);
-    const diffDev = Math.abs(stats1.dev - stats2.dev);
-    const score = 100 - Math.min((diffAvg + diffDev) / 2, 100);
+    // تحليل لون
+    const color1 = getDominantColor(img1);
+    const color2 = getDominantColor(img2);
+    const colorMatch = Math.abs(color1.r - color2.r) + Math.abs(color1.g - color2.g) + Math.abs(color1.b - color2.b);
 
-    progress.value = score;
+    // تحليل شكل هندسي
+    const shape1 = { w: img1.width, h: img1.height };
+    const shape2 = { w: img2.width, h: img2.height };
+    const ratioDiff = Math.abs((shape1.w / shape1.h) - (shape2.w / shape2.h));
 
-    if (score >= 90)
-      result.innerText = `✅ تطابق ${score.toFixed(1)}% - نسيج مطابق تمامًا`;
-    else if (score >= 70)
-      result.innerText = `⚠️ تطابق ${score.toFixed(1)}% - تحقق يدوي موصى به`;
-    else
-      result.innerText = `❌ تطابق ${score.toFixed(1)}% - محتمل اختلاف أو تزوير`;
+    // حساب النتيجة النهائية
+    const score = 100 - Math.min((textureDiff + colorMatch/3 + ratioDiff*10), 100);
+    bar.value = score;
 
-  } catch (err) {
-    result.innerText = "❌ فشل التحليل، تأكد من الصور المدخلة.";
+    resultBox.innerHTML = `
+      <h3>📊 النتائج الكاملة:</h3>
+      <ul>
+        <li>🧵 تحليل النسيج: فرق ${textureDiff.toFixed(2)}</li>
+        <li>🎨 اللون السائد: فرق ${colorMatch.toFixed(1)}</li>
+        <li>📐 الشكل الهندسي: فرق نسب ${ratioDiff.toFixed(2)}</li>
+        <li><strong>📈 درجة التطابق:</strong> ${score.toFixed(1)}%</li>
+      </ul>
+      ${score >= 90 ? "✅ تطابق تام — الوثيقة سليمة." :
+        score >= 70 ? "⚠️ تطابق جزئي — تحقق يدوي موصى به." :
+        "❌ تطابق منخفض — تزوير محتمل."}
+    `;
+  } catch {
+    resultBox.innerHTML = "❌ فشل التحليل — تأكد من وضوح الصور.";
   }
 }
 
 function loadImage(file) {
-  return new Promise((resolve, reject) => {
+  return new Promise((res, rej) => {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.src = reader.result;
-      img.onload = () => resolve(img);
-      img.onerror = reject;
+      img.onload = () => res(img);
+      img.onerror = rej;
     };
     reader.readAsDataURL(file);
   });
 }
 
-function analyzeImage(img) {
+function analyzeSobel(img) {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-
   canvas.width = img.width;
   canvas.height = img.height;
   ctx.drawImage(img, 0, 0);
+  const d = ctx.getImageData(20, 60, 200, 200).data;
 
-  const regions = [
-    { x: 20, y: 60, w: 150, h: 150 },
-    { x: img.width - 170, y: 60, w: 150, h: 150 }
-  ];
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const gray = (d[i] + d[i+1] + d[i+2]) / 3;
+    sum += gray;
+  }
+  const avg = sum / (d.length / 4);
+  const dev = Math.sqrt(d.reduce((acc, val, i) => {
+    if (i % 4 === 0) {
+      const gray = (d[i] + d[i+1] + d[i+2]) / 3;
+      return acc + Math.pow(gray - avg, 2);
+    }
+    return acc;
+  }, 0) / (d.length / 4));
 
-  const values = regions.map(r => sobel(ctx.getImageData(r.x, r.y, r.w, r.h)));
-  const avg = mean(values);
-  const dev = deviation(values, avg);
   return { avg, dev };
 }
 
-function sobel(imageData) {
-  let sum = 0;
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
-    sum += gray;
+function getDominantColor(img) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  ctx.drawImage(img, 0, 0);
+  const d = ctx.getImageData(0, 0, 200, 200).data;
+
+  let r = 0, g = 0, b = 0, count = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    r += d[i]; g += d[i+1]; b += d[i+2];
+    count++;
   }
-  return sum / (imageData.width * imageData.height);
-}
-
-function mean(arr) {
-  return arr.reduce((a, b) => a + b, 0) / arr.length;
-}
-
-function deviation(arr, avg) {
-  return Math.sqrt(arr.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / arr.length);
+  return {
+    r: Math.floor(r / count),
+    g: Math.floor(g / count),
+    b: Math.floor(b / count)
+  };
 }
 </script>
 
