@@ -2,25 +2,19 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
-  <title>Live Visual Dual Check</title>
+  <title>كشف التزوير الذكي</title>
   <style>
     body {
-      background: #0b0b0b;
+      background: #111;
       color: #ff8800;
       font-family: 'Cairo', sans-serif;
       text-align: center;
-      padding: 1rem;
     }
     video, img {
       width: 100%;
       max-width: 500px;
       border: 2px solid #ff8800;
-      margin-bottom: 10px;
-    }
-    .container {
-      position: relative;
-      max-width: 500px;
-      margin: auto;
+      margin: 1rem 0;
     }
     .box {
       position: absolute;
@@ -41,147 +35,156 @@
       cursor: pointer;
     }
     canvas { display: none; }
-    #results { margin-top: 1rem; font-size: 1rem; color: #ccc; }
-    #confirmBtn { display: none; }
+    #results {
+      margin-top: 1rem;
+      padding: 10px;
+      font-size: 1rem;
+      color: #eee;
+      background: #222;
+      border-radius: 8px;
+      width: fit-content;
+      margin-inline: auto;
+    }
   </style>
 </head>
 <body>
-  <h2>🔎 التحقق البصري للمستندين</h2>
-  <div class="container">
-    <video id="video" autoplay playsinline></video>
-    <img id="uploadedImage" style="display:none;">
-    <div class="box left"></div>
-    <div class="box right"></div>
-  </div>
+  <h2>🔍 كشف التزوير الذكي للمستندات</h2>
 
-  <input type="file" accept="image/*" onchange="handleImageUpload(event)">
-  <button onclick="analyze()">📷 تحليل الشكل والمحتوى</button>
-  <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
-  <canvas id="canvas"></canvas>
+  <video id="video" autoplay playsinline></video>
+  <img id="uploadedImage" style="display:none;" />
+  <input type="file" accept="image/*" onchange="handleUpload(event)">
+  <button onclick="analyze()">تحليل الصورة</button>
   <div id="results"></div>
+  <canvas id="canvas"></canvas>
 
 <script>
 const video = document.getElementById("video");
-const uploadedImage = document.getElementById("uploadedImage");
+const img = document.getElementById("uploadedImage");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
+// ✅ تفعيل الكاميرا
 navigator.mediaDevices.getUserMedia({ video: true })
   .then(stream => video.srcObject = stream)
-  .catch(() => alert("🚫 فشل تشغيل الكاميرا"));
+  .catch(() => alert("📷 الكاميرا غير مدعومة"));
 
-function handleImageUpload(event) {
-  const file = event.target.files[0];
+function handleUpload(e) {
+  const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(e) {
-    uploadedImage.src = e.target.result;
-    uploadedImage.style.display = "block";
+  reader.onload = ev => {
+    img.src = ev.target.result;
+    img.style.display = "block";
     video.style.display = "none";
   };
   reader.readAsDataURL(file);
 }
 
 function analyze() {
-  let source = video.style.display === "none" ? uploadedImage : video;
-  if (!source || !canvas || !ctx) return alert("📷 مصدر الصورة غير جاهز");
+  const source = video.style.display === "none" ? img : video;
+  if (!source) return;
 
-  canvas.width = source.videoWidth || source.naturalWidth;
-  canvas.height = source.videoHeight || source.naturalHeight;
-  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  const w = source.videoWidth || source.naturalWidth;
+  const h = source.videoHeight || source.naturalHeight;
+  canvas.width = w;
+  canvas.height = h;
+  ctx.drawImage(source, 0, 0, w, h);
 
   const boxW = 220, boxH = 220;
   const left = ctx.getImageData(10, 50, boxW, boxH);
-  const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
+  const right = ctx.getImageData(w - boxW - 10, 50, boxW, boxH);
 
-  const shapeScore = estimateShapeMatch(left, right);
-  if (shapeScore < 50) {
-    document.getElementById("confirmBtn").style.display = "none";
-    document.getElementById("results").innerHTML =
-      `📐 الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من المطلوب`;
-    return;
-  }
+  const shape = estimateShapeMatch(left, right);
+  if (shape < 50)
+    return document.getElementById("results").innerHTML = `📐 الشكل الهندسي: ${shape.toFixed(1)}% ❌ لا يمكن المقارنة`;
 
-  const colorScore = compareHSVSimilarity(left.data, right.data);
-  const texture1 = analyzeTexture(left);
-  const texture2 = analyzeTexture(right);
-  const diffTexture = Math.abs(texture1.dev - texture2.dev);
-  const textureScore = 100 - Math.min(diffTexture, 100);
+  const color = compareHSV(left.data, right.data);
+  const texture1 = analyzeTexture(left.data);
+  const texture2 = analyzeTexture(right.data);
+  const textureDiff = Math.abs(texture1.dev - texture2.dev);
+  const texture = 100 - Math.min(textureDiff, 100);
 
-  const edgeScore1 = analyzeEdgeIntegrity(left.data, boxW, boxH);
-  const edgeScore2 = analyzeEdgeIntegrity(right.data, boxW, boxH);
-  const edgeScore = 100 - Math.abs(edgeScore1 - edgeScore2);
+  const edge1 = analyzeEdges(left.data, boxW, boxH);
+  const edge2 = analyzeEdges(right.data, boxW, boxH);
+  const edge = 100 - Math.abs(edge1 - edge2);
 
-  const finalScore = ((colorScore + textureScore + edgeScore) / 3).toFixed(1);
-  const verdict = finalScore >= 85 ? "✅ تطابق علمي مؤكد" : "⚠️ احتمال تزوير";
+  const finalScore = ((color + texture + edge) / 3).toFixed(1);
+  const decision = finalScore >= 85 ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
 
   document.getElementById("results").innerHTML = `
-    📐 الشكل الهندسي: ${shapeScore.toFixed(1)}% ✅<br>
-    🎨 اللون: ${colorScore.toFixed(1)}%<br>
-    🧶 النسيج الورقي: ${textureScore.toFixed(1)}%<br>
-    🧱 الحواف البصرية: ${edgeScore.toFixed(1)}%<br><br>
-    🧠 القرار النهائي: ${finalScore}%<br>${verdict}
+    📐 الشكل الهندسي (تم تجاوزه): ${shape.toFixed(1)}%<br>
+    🎨 اللون (HSV): ${color.toFixed(1)}%<br>
+    🧶 النسيج: ${texture.toFixed(1)}%<br>
+    🧱 الحواف البصرية: ${edge.toFixed(1)}%<br><br>
+    🧠 القرار النهائي: ${finalScore}%<br>${decision}
   `;
-  document.getElementById("confirmBtn").style.display = "inline-block";
 }
 
-function estimateShapeMatch(img1, img2) {
-  let matched = 0;
-  const total = img1.data.length / 4;
-  for (let i = 0; i < img1.data.length; i += 4) {
-    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
-    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
-    if (Math.abs(g1 - g2) < 30) matched++;
-  }
-  return matched / total * 100;
-}
-
-function compareHSVSimilarity(data1, data2) {
+// ✅ تحليل HSV
+function compareHSV(data1, data2) {
   function rgbToHsv(r,g,b){
     r/=255; g/=255; b/=255;
-    let max=Math.max(r,g,b), min=Math.min(r,g,b);
-    let h,s,v=max, d=max-min;
-    s=max===0?0:d/max;
-    if(max===min) h=0;
-    else if(max===r) h=(g-b)/d+(g<b?6:0);
-    else if(max===g) h=(b-r)/d+2;
-    else h=(r-g)/d+4;
-    h=h*60;
-    return [h,s*100,v*100];
+    const max = Math.max(r,g,b), min = Math.min(r,g,b);
+    const d = max - min;
+    let h = 0, s = max === 0 ? 0 : d / max, v = max;
+    if (d !== 0) {
+      if (max === r) h = ((g - b) / d) + (g < b ? 6 : 0);
+      else if (max === g) h = ((b - r) / d) + 2;
+      else h = ((r - g) / d) + 4;
+      h *= 60;
+    }
+    return [h, s * 100, v * 100];
   }
 
   let h1=0,s1=0,v1=0, h2=0,s2=0,v2=0;
-  const len = data1.length;
-  for(let i=0;i<len;i+=4){
-    let [a,b,c] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
+  for (let i=0; i<data1.length; i+=4) {
+    let [a,b,c] = rgbToHsv(data1[i],data1[i+1],data1[i+2]);
     h1+=a; s1+=b; v1+=c;
-    [a,b,c] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
+    [a,b,c] = rgbToHsv(data2[i],data2[i+1],data2[i+2]);
     h2+=a; s2+=b; v2+=c;
   }
-  let pixels = len / 4;
-  let dh=Math.abs(h1/pixels - h2/pixels)/360*40;
-  let ds=Math.abs(s1/pixels - s2/pixels)/100*30;
-  let dv=Math.abs(v1/pixels - v2/pixels)/100*30;
-  return Math.max(0,100-(dh+ds+dv));
+  const total = data1.length / 4;
+  const dh = Math.abs(h1/total - h2/total) / 360 * 40;
+  const ds = Math.abs(s1/total - s2/total) / 100 * 30;
+  const dv = Math.abs(v1/total - v2/total) / 100 * 30;
+  return Math.max(0, 100 - (dh + ds + dv));
 }
 
-function analyzeTexture(imageData){
-  let values=[], sum=0;
-  const data = imageData.data;
-  for(let i=0;i<data.length;i+=4){
-    let g = (data[i]+data[i+1]+data[i+2])/3;
+// ✅ تحليل النسيج
+function analyzeTexture(data){
+  let sum = 0, values = [];
+  for(let i=0; i<data.length; i+=4){
+    const g = (data[i]+data[i+1]+data[i+2])/3;
     values.push(g);
     sum += g;
   }
   const avg = sum / values.length;
-  const dev = Math.sqrt(values.reduce((a,v)=>a+Math.pow(v-avg,2),0)/values.length);
+  const dev = Math.sqrt(values.reduce((a,v) => a + (v - avg) ** 2, 0) / values.length);
   return { avg, dev };
 }
 
-function analyzeEdgeIntegrity(data, width, height){
+// ✅ الشكل الهندسي
+function estimateShapeMatch(img1, img2){
+  let matched = 0, pixels = img1.data.length / 4;
+  for(let i = 0; i < img1.data.length; i += 4){
+    const g1 = (img1.data[i]+img1.data[i+1]+img1.data[i+2])/3;
+    const g2 = (img2.data[i]+img2.data[i+1]+img2.data[i+2])/3;
+    if(Math.abs(g1 - g2) < 30) matched++;
+  }
+  return matched / pixels * 100;
+}
+
+// ✅ تحليل الحواف (Sobel X + Y)
+function analyzeEdges(data,w,h){
   const sobelX = [-1,0,1,-2,0,2,-1,0,1];
   const sobelY = [-1,-2,-1,0,0,0,1,2,1];
-  let total = 0;
-  function getGray(x,y){
-    let i = (y*width + x)*4;
-    return (data[i]+data[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/JohnChernoff/mole-client/tree/73e5fdb7af801123eab5014afc79b20a07a27515/js%2Fcolors.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/pointofpresence/pixla/tree/b401b2afc51749123b283839ad3322680e4f3b31/src%2Fjs%2Flib%2FBuffer.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "2")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/PackageForge/Color/tree/7da4b67c12d59416512c3d60547cace14624bccb/projects%2Fcolor%2Fsrc%2Flib%2Fcolor.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "3")
+  function g(x,y){
+    let i=(y*w+x)*4;
+    return (data[i]+data[i+1]+data[i+2])/3;
+  }
+  let total=0;
+  for(let y=1; y<h-1; y++){
+    for(let x=1;x<w-1;x++){
+      let gx=0, gy=0, idx=0;
+      for(let ky=-1;ky<=1;ky++){
+        for
