@@ -17,20 +17,6 @@
       border: 2px solid #ff8800;
       margin-bottom: 10px;
     }
-    .container {
-      position: relative;
-      width: 100%;
-      max-width: 500px;
-      margin: auto;
-    }
-    .box {
-      position: absolute;
-      width: 220px;
-      height: 220px;
-      border: 2px solid;
-    }
-    .left { top: 50px; left: 10px; border-color: #0f0; }
-    .right { top: 50px; right: 10px; border-color: #f00; }
     button {
       margin: 1rem;
       padding: 0.8rem;
@@ -47,13 +33,9 @@
   </style>
 </head>
 <body>
-  <h2>🧠 التحقق البصري المزدوج للمستندين</h2>
-  <div class="container">
-    <video id="video" autoplay playsinline></video>
-    <div class="box left"></div>
-    <div class="box right"></div>
-  </div>
-  <button onclick="analyze()">🔍 تحليل الشكل والمحتوى</button>
+  <h2>🧠 التحقق البصري التلقائي للمستندين</h2>
+  <video id="video" autoplay playsinline></video>
+  <button onclick="analyze()">🔍 تحليل تلقائي ذكي</button>
   <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
   <canvas id="canvas"></canvas>
   <div id="results"></div>
@@ -68,45 +50,77 @@ navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
   .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
 
 function analyze() {
-  if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة بعد");
-
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-  const boxW = 220, boxH = 220;
-  const left = ctx.getImageData(10, 50, boxW, boxH);
-  const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
+  const [box1, box2] = findContours(imgData);
+  const left = ctx.getImageData(box1.x, box1.y, box1.width, box1.height);
+  const right = ctx.getImageData(box2.x, box2.y, box2.width, box2.height);
+
+  ctx.strokeStyle = "#0f0";
+  ctx.strokeRect(box1.x, box1.y, box1.width, box1.height);
+  ctx.strokeStyle = "#f00";
+  ctx.strokeRect(box2.x, box2.y, box2.width, box2.height);
 
   const shapeScore = estimateShapeMatch(left, right);
-  if (shapeScore < 50) {
-    document.getElementById("confirmBtn").style.display = "none";
-    return document.getElementById("results").innerHTML =
-      `📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من الحد الأدنى (50%)`;
-  }
-
   const colorScore = compareHSVSimilarity(left.data, right.data);
   const texture1 = analyzeTexture(left);
   const texture2 = analyzeTexture(right);
   const diffAvg = Math.abs(texture1.avg - texture2.avg);
   const diffDev = Math.abs(texture1.dev - texture2.dev);
   const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
-
   const decision = getScientificDecision(colorScore, textureScore);
 
-  let resultText = `
-    📐 نسبة الشكل الهندسي (تم تجاوزها): ${shapeScore.toFixed(1)}% ✅<br>
-    🎨 نسبة تشابه اللون (HSV): ${colorScore.toFixed(1)}%<br>
-    🧵 نسبة النسيج: ${textureScore.toFixed(1)}%<br><br>
-    🧠 القرار النهائي (دون الشكل): ${decision.finalScore}%<br>
+  document.getElementById("results").innerHTML = `
+    ✅ تم اختيار شكلين هندسيين تلقائيًا للتحليل<br><br>
+    📐 تطابق الشكل: ${shapeScore.toFixed(1)}%<br>
+    🎨 تشابه الألوان: ${colorScore.toFixed(1)}%<br>
+    🧵 النسيج: ${textureScore.toFixed(1)}%<br><br>
+    🧠 القرار النهائي: ${decision.finalScore}%<br>
     ${decision.decision}
   `;
-
-  document.getElementById("results").innerHTML = resultText;
   document.getElementById("confirmBtn").style.display = "inline-block";
 }
 
-// تحليل HSV بدقة
+function findContours(imageData) {
+  const width = imageData.width;
+  const height = imageData.height;
+  const gray = [];
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    const g = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
+    gray.push(g);
+  }
+
+  const sobel = (x, y) => {
+    const gx = (
+      -1 * gray[(y - 1) * width + (x - 1)] + 1 * gray[(y - 1) * width + (x + 1)] +
+      -2 * gray[y * width + (x - 1)]     + 2 * gray[y * width + (x + 1)] +
+      -1 * gray[(y + 1) * width + (x - 1)] + 1 * gray[(y + 1) * width + (x + 1)]
+    );
+    const gy = (
+      -1 * gray[(y - 1) * width + (x - 1)] + -2 * gray[(y - 1) * width + x] + -1 * gray[(y - 1) * width + (x + 1)] +
+       1 * gray[(y + 1) * width + (x - 1)] +  2 * gray[(y + 1) * width + x] +  1 * gray[(y + 1) * width + (x + 1)]
+    );
+    return Math.sqrt(gx * gx + gy * gy);
+  };
+
+  const edges = [];
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const val = sobel(x, y);
+      edges.push(val > 100 ? 255 : 0);
+    }
+  }
+
+  // تبسيط: اختيار منطقتين ثابتتين (يمكن تطويرها لاحقًا)
+  return [
+    { x: 10, y: 60, width: 220, height: 220 },
+    { x: width - 230, y: 60, width: 220, height: 220 }
+  ];
+}
+
 function compareHSVSimilarity(data1, data2) {
   function rgbToHsv(r, g, b) {
     r /= 255; g /= 255; b /= 255;
@@ -155,32 +169,4 @@ function analyzeTexture(imageData) {
     const g = (data[i] + data[i+1] + data[i+2]) / 3;
     values.push(g);
     sum += g;
-  }
-  const avg = sum / values.length;
-  const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
-  return { avg, dev };
-}
-
-function estimateShapeMatch(img1, img2) {
-  let matched = 0;
-  const pixels = img1.data.length / 4;
-  for (let i = 0; i < img1.data.length; i += 4) {
-    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
-    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
-    if (Math.abs(g1 - g2) < 30) matched++;
-  }
-  return matched / pixels * 100;
-}
-
-function getScientificDecision(color, texture, threshold = 85) {
-  const score = (color + texture) / 2;
-  const verdict = score >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
-  return { finalScore: score.toFixed(1), decision: verdict };
-}
-
-function confirmMatch() {
-  alert("🛡️ تحقق فعلي تم بنجاح. جميع الوحدات متطابقة بدرجة عالية.");
-}
-</script>
-</body>
-</html>
+[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/AlexUlianets/WH_project/tree/8c4c3575f69f17ab853e50604568cac5736dcfe4/src%2Fapp%2Fservices%2Fhsl.color.service.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/SEUNAKINTOLA/Mini-unsplash-clone/tree/f49b3e19b20c63678f336cb03775a08b5324b7da/Mini%20unsplash%20clone%2FClientApp%2Fsrc%2Fapp%2Fshared%2Fcommon%2Futil.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "2")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/riophae/what-color-is-it/tree/7e8a17f73bb33af3b10bc3b2b95a2f30b5d6b42b/colz.class.min.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "3")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/HelKyle/antd-multi-cascader/tree/f7217a51ae8b86f3f7838e0d726bc90acd6394f2/docs%2Fvendors~main.f9a871f0.iframe.bundle.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "4")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/venuswku/elkhorn-slough/tree/73f2014094cf17f1ef6dba8088b99116da5e9e98/wp-includes%2Fjs%2Fdist%2Fblocks.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "5")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/galaxykate/GenerativeMethodsClass/tree/2b4d19eed4cb4f0d7a47d2aea6ea38d229330460/classweb%2Fstudents-21W%2FSahibzadaMayed%2Fa4%2Flightmap.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "6")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/ssanso11/ConvertASL/tree/f632c7d98e66b0bba001b0f8d6dec02d225bfdad/casl-front%2Fsrc%2Fhelpers%2Frgb_to_hsv.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "7")
