@@ -25,8 +25,8 @@
     }
     .box {
       position: absolute;
-      width: 220px;     /* ✅ توسعة العرض */
-      height: 220px;    /* ✅ توسعة الطول */
+      width: 220px;
+      height: 220px;
       border: 2px solid;
     }
     .left { top: 50px; left: 10px; border-color: #0f0; }
@@ -78,27 +78,27 @@ function analyze() {
   const left = ctx.getImageData(10, 50, boxW, boxH);
   const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
 
-  const colorScore = compareShapeAndColor(left, right);
-  if (colorScore < 80) {
+  const shapeScore = estimateShapeMatch(left, right);
+  if (shapeScore < 50) {
     document.getElementById("confirmBtn").style.display = "none";
     return document.getElementById("results").innerHTML =
-      `🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}% ❌ لا يمكن المتابعة للتحقق النسيجي`;
+      `📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من الحد الأدنى (50%)`;
   }
 
+  const colorScore = compareShapeAndColor(left, right);
   const texture1 = analyzeTexture(left);
   const texture2 = analyzeTexture(right);
   const diffAvg = Math.abs(texture1.avg - texture2.avg);
   const diffDev = Math.abs(texture1.dev - texture2.dev);
   const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
 
-  const shapeScore = estimateShapeMatch(left, right);
-  const decision = getScientificDecision(colorScore, textureScore, shapeScore);
+  const decision = getScientificDecision(colorScore, textureScore);
 
   let resultText = `
-    🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}%<br>
-    📊 نسبة تطابق النسيج: ${textureScore.toFixed(1)}%<br>
-    📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}%<br><br>
-    🧠 النتيجة النهائية: ${decision.finalScore}%<br>
+    📐 نسبة الشكل الهندسي (تم تجاوزها): ${shapeScore.toFixed(1)}% ✅<br>
+    🎨 نسبة اللون: ${colorScore.toFixed(1)}%<br>
+    🧵 نسبة النسيج: ${textureScore.toFixed(1)}%<br><br>
+    🧠 القرار النهائي (دون الشكل): ${decision.finalScore}%<br>
     ${decision.decision}
   `;
 
@@ -150,10 +150,10 @@ function estimateShapeMatch(img1, img2) {
   return matched / pixels * 100;
 }
 
-function getScientificDecision(c, t, s, threshold = 85) {
-  const finalScore = (c + t + s) / 3;
-  const verdict = finalScore >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
-  return { finalScore: finalScore.toFixed(1), decision: verdict };
+function getScientificDecision(color, texture, threshold = 85) {
+  const score = (color + texture) / 2;
+  const verdict = score >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
+  return { finalScore: score.toFixed(1), decision: verdict };
 }
 
 function confirmMatch() {
