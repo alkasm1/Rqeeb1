@@ -1,108 +1,25 @@
-<!DOCTYPE html>
-<html lang="ar">
-<head>
-  <meta charset="UTF-8" />
-  <title>تحليل بصري مباشر</title>
-  <style>
-    body {
-      background: #111;
-      color: #fff;
-      font-family: 'Cairo', sans-serif;
-      text-align: center;
-      padding: 1rem;
-    }
-    video {
-      width: 100%;
-      max-width: 500px;
-      border: 2px solid #0ff;
-    }
-    canvas {
-      display: none;
-    }
-    .boxes {
-      position: relative;
-      max-width: 500px;
-      margin: auto;
-    }
-    .box {
-      position: absolute;
-      width: 100px;
-      height: 100px;
-      border: 2px solid;
-    }
-    .left { top: 50px; left: 10px; border-color: #0f0; }
-    .right { top: 50px; right: 10px; border-color: #f00; }
-    button {
-      margin: 1rem;
-      padding: 0.8rem;
-      font-size: 1rem;
-      background: #0ff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-  </style>
-</head>
-<body>
-  <h2>📷 تشغيل الكاميرا وتحليل الشكل</h2>
-  <button onclick="startCamera()">🔄 تشغيل الكاميرا</button>
-  <div class="boxes">
-    <video id="video" autoplay playsinline></video>
-    <div class="box left"></div>
-    <div class="box right"></div>
-  </div>
-  <button onclick="analyze()">📐 تحليل الشكل</button>
-  <div id="result"></div>
-  <canvas id="canvas"></canvas>
+<video id="video" playsinline style="border:2px solid lime; width:100%; max-width:500px;"></video>
+<button onclick="startCamera()">🔄 تشغيل الكاميرا يدويًا</button>
 
 <script>
-let video, canvas, ctx;
-
 function startCamera() {
-  video = document.getElementById("video");
-  canvas = document.getElementById("canvas");
-  ctx = canvas.getContext("2d");
+  const video = document.getElementById("video");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert("🚫 المتصفح لا يدعم تشغيل الكاميرا");
+    return;
+  }
 
   navigator.mediaDevices.getUserMedia({ video: true })
     .then(stream => {
       video.srcObject = stream;
-      video.play();
-      console.log("✅ الكاميرا بدأت العمل");
+      return video.play();
+    })
+    .then(() => {
+      console.log("✅ الكاميرا تعمل الآن");
     })
     .catch(err => {
-      console.error("🚫 فشل تشغيل الكاميرا:", err);
-      alert("تعذر الوصول إلى الكاميرا");
+      console.error("❌ تعذر تشغيل الكاميرا:", err);
+      alert("فشل في تشغيل الكاميرا، تحقق من الأذونات");
     });
 }
-
-function analyze() {
-  if (!video || video.readyState < 2) {
-    return alert("📷 الكاميرا غير جاهزة بعد");
-  }
-
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  const boxW = 100, boxH = 100;
-  const left = ctx.getImageData(10, 50, boxW, boxH);
-  const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
-
-  const match = compareGrayscale(left, right);
-  document.getElementById("result").innerHTML =
-    `📊 نسبة التطابق الهندسي: ${match.toFixed(1)}%`;
-}
-
-function compareGrayscale(img1, img2) {
-  let matched = 0;
-  const pixels = img1.data.length / 4;
-  for (let i = 0; i < img1.data.length; i += 4) {
-    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
-    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
-    if (Math.abs(g1 - g2) < 30) matched++;
-  }
-  return matched / pixels * 100;
-}
 </script>
-</body>
-</html>
