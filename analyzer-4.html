@@ -64,7 +64,7 @@
   <div id="results"></div>
 
 <script>
-const video = document.getElementById("video");
+  const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
@@ -185,6 +185,17 @@ function getScientificDecision(color, texture, threshold = 85) {
 
 function confirmMatch() {
   alert("🛡️ تحقق فعلي تم بنجاح. جميع الوحدات متطابقة بدرجة عالية.");
+}
+function loadImage(event, targetId) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById(targetId);
+    img.src = e.target.result;
+    img.style.display = "none"; // يبقى مخفيًا لأن المقارنة تستخدم canvas
+  };
+  reader.readAsDataURL(file);
 }
 </script>
 </body>
