@@ -47,17 +47,16 @@
   </style>
 </head>
 <body>
+<input type="file" accept="image/*" onchange="loadImage(event, 'imgLeft')" />
+<input type="file" accept="image/*" onchange="loadImage(event, 'imgRight')" />
+<img id="imgLeft" style="display:none;" />
+<img id="imgRight" style="display:none;" />
   <h2>🧠 التحقق البصري المزدوج للمستندين</h2>
   <div class="container">
     <video id="video" autoplay playsinline></video>
     <div class="box left"></div>
    <div class="box right"></div>
- 
-<input type="file" accept="image/*" onchange="loadImage(event, 'imgLeft')" />
-<input type="file" accept="image/*" onchange="loadImage(event, 'imgRight')" />
-<img id="imgLeft" style="display:none;" />
-<img id="imgRight" style="display:none;" />
-  </div>
+   </div>
   <button onclick="analyze()">🔍 تحليل الشكل والمحتوى</button>
   <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
   <canvas id="canvas"></canvas>
