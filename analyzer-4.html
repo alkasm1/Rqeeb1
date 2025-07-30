@@ -85,7 +85,7 @@ function analyze() {
       `📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من الحد الأدنى (50%)`;
   }
 
-  const colorScore = compareShapeAndColor(left, right);
+  const colorScore = compareHSVSimilarity(left.data, right.data);
   const texture1 = analyzeTexture(left);
   const texture2 = analyzeTexture(right);
   const diffAvg = Math.abs(texture1.avg - texture2.avg);
@@ -96,7 +96,7 @@ function analyze() {
 
   let resultText = `
     📐 نسبة الشكل الهندسي (تم تجاوزها): ${shapeScore.toFixed(1)}% ✅<br>
-    🎨 نسبة اللون: ${colorScore.toFixed(1)}%<br>
+    🎨 نسبة تشابه اللون (HSV): ${colorScore.toFixed(1)}%<br>
     🧵 نسبة النسيج: ${textureScore.toFixed(1)}%<br><br>
     🧠 القرار النهائي (دون الشكل): ${decision.finalScore}%<br>
     ${decision.decision}
@@ -106,23 +106,45 @@ function analyze() {
   document.getElementById("confirmBtn").style.display = "inline-block";
 }
 
-function compareShapeAndColor(img1, img2) {
-  const hist1 = getColorHistogram(img1.data);
-  const hist2 = getColorHistogram(img2.data);
-  let diff = 0;
-  for (let i = 0; i < 256; i++) diff += Math.abs(hist1[i] - hist2[i]);
-  const total = hist1.reduce((a,b) => a+b,0) + hist2.reduce((a,b) => a+b,0);
-  const score = 100 - (diff / total) * 100;
-  return Math.max(0, Math.min(score, 100));
-}
-
-function getColorHistogram(data) {
-  const hist = Array(256).fill(0);
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = Math.round((data[i] + data[i+1] + data[i+2]) / 3);
-    hist[gray]++;
+// تحليل HSV بدقة
+function compareHSVSimilarity(data1, data2) {
+  function rgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+    const d = max - min;
+    s = max === 0 ? 0 : d / max;
+    if (max === min) h = 0;
+    else {
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return [h * 360, s * 100, v * 100];
   }
-  return hist;
+
+  let totalH1 = 0, totalS1 = 0, totalV1 = 0;
+  let totalH2 = 0, totalS2 = 0, totalV2 = 0;
+  const pixels = data1.length / 4;
+
+  for (let i = 0; i < data1.length; i += 4) {
+    const [h1, s1, v1] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
+    const [h2, s2, v2] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
+    totalH1 += h1; totalS1 += s1; totalV1 += v1;
+    totalH2 += h2; totalS2 += s2; totalV2 += v2;
+  }
+
+  const avgH1 = totalH1 / pixels, avgS1 = totalS1 / pixels, avgV1 = totalV1 / pixels;
+  const avgH2 = totalH2 / pixels, avgS2 = totalS2 / pixels, avgV2 = totalV2 / pixels;
+
+  const diffH = Math.abs(avgH1 - avgH2) / 360 * 40;
+  const diffS = Math.abs(avgS1 - avgS2) / 100 * 30;
+  const diffV = Math.abs(avgV1 - avgV2) / 100 * 30;
+  const score = 100 - (diffH + diffS + diffV);
+  return Math.max(0, score);
 }
 
 function analyzeTexture(imageData) {
