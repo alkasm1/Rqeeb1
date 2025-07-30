@@ -15,24 +15,22 @@
       width: 100%;
       max-width: 500px;
       border: 2px solid #ff8800;
+      margin-bottom: 10px;
     }
     .container {
       position: relative;
       width: 100%;
       max-width: 500px;
       margin: auto;
-      margin-top: 10px;
     }
     .box {
       position: absolute;
-      width: 200px;
-      height: 200px;
+      width: 220px;     /* ✅ توسعة العرض */
+      height: 220px;    /* ✅ توسعة الطول */
       border: 2px solid;
-      touch-action: none;
-      user-select: none;
     }
-    .left { border-color: #0f0; }
-    .right { border-color: #f00; }
+    .left { top: 50px; left: 10px; border-color: #0f0; }
+    .right { top: 50px; right: 10px; border-color: #f00; }
     button {
       margin: 1rem;
       padding: 0.8rem;
@@ -52,10 +50,10 @@
   <h2>🧠 التحقق البصري المزدوج للمستندين</h2>
   <div class="container">
     <video id="video" autoplay playsinline></video>
-    <div class="box left" id="leftBox"></div>
-    <div class="box right" id="rightBox"></div>
+    <div class="box left"></div>
+    <div class="box right"></div>
   </div>
-  <button onclick="analyze()">🔍 تحليل الشكل والنسيج</button>
+  <button onclick="analyze()">🔍 تحليل الشكل والمحتوى</button>
   <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
   <canvas id="canvas"></canvas>
   <div id="results"></div>
@@ -64,28 +62,10 @@
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const leftBox = document.getElementById("leftBox");
-const rightBox = document.getElementById("rightBox");
 
-let currentThreshold = 50;
-
-// كاميرا
 navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
   .then(stream => video.srcObject = stream)
   .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
-
-function getBoxCoordinates(box) {
-  const rect = box.getBoundingClientRect();
-  const videoRect = video.getBoundingClientRect();
-  const scaleX = video.videoWidth / videoRect.width;
-  const scaleY = video.videoHeight / videoRect.height;
-  return {
-    x: (rect.left - videoRect.left) * scaleX,
-    y: (rect.top - videoRect.top) * scaleY,
-    w: box.offsetWidth * scaleX,
-    h: box.offsetHeight * scaleY
-  };
-}
 
 function analyze() {
   if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة بعد");
@@ -94,17 +74,15 @@ function analyze() {
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  const l = getBoxCoordinates(leftBox);
-  const r = getBoxCoordinates(rightBox);
+  const boxW = 220, boxH = 220;
+  const left = ctx.getImageData(10, 50, boxW, boxH);
+  const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
 
-  const left = ctx.getImageData(l.x, l.y, l.w, l.h);
-  const right = ctx.getImageData(r.x, r.y, r.w, r.h);
-
-  const shapeScore = estimateShapeMatch(left, right);
-  if (shapeScore < currentThreshold) {
+  const colorScore = compareShapeAndColor(left, right);
+  if (colorScore < 90) {
     document.getElementById("confirmBtn").style.display = "none";
     return document.getElementById("results").innerHTML =
-      `📐 نسبة تطابق الشكل: ${shapeScore.toFixed(1)}% ❌ أقل من الحد المطلوب (${currentThreshold}%)`;
+      `🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}% ❌ لا يمكن المتابعة للتحقق النسيجي`;
   }
 
   const texture1 = analyzeTexture(left);
@@ -113,17 +91,52 @@ function analyze() {
   const diffDev = Math.abs(texture1.dev - texture2.dev);
   const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
 
-  const colorScore = compareColorSimilarity(left, right);
+  const shapeScore = estimateShapeMatch(left, right);
   const decision = getScientificDecision(colorScore, textureScore, shapeScore);
 
-  document.getElementById("results").innerHTML = `
-    📐 نسبة تطابق الشكل: ${shapeScore.toFixed(1)}%<br>
-    🎨 نسبة اللون: ${colorScore.toFixed(1)}%<br>
-    🧶 النسيج: ${textureScore.toFixed(1)}%<br><br>
-    🧠 القرار النهائي: ${decision.finalScore}%<br>
+  let resultText = `
+    🎨 نسبة تشابه اللون والشكل: ${colorScore.toFixed(1)}%<br>
+    📊 نسبة تطابق النسيج: ${textureScore.toFixed(1)}%<br>
+    📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}%<br><br>
+    🧠 النتيجة النهائية: ${decision.finalScore}%<br>
     ${decision.decision}
   `;
+
+  document.getElementById("results").innerHTML = resultText;
   document.getElementById("confirmBtn").style.display = "inline-block";
+}
+
+function compareShapeAndColor(img1, img2) {
+  const hist1 = getColorHistogram(img1.data);
+  const hist2 = getColorHistogram(img2.data);
+  let diff = 0;
+  for (let i = 0; i < 256; i++) diff += Math.abs(hist1[i] - hist2[i]);
+  const total = hist1.reduce((a,b) => a+b,0) + hist2.reduce((a,b) => a+b,0);
+  const score = 100 - (diff / total) * 100;
+  return Math.max(0, Math.min(score, 100));
+}
+
+function getColorHistogram(data) {
+  const hist = Array(256).fill(0);
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = Math.round((data[i] + data[i+1] + data[i+2]) / 3);
+    hist[gray]++;
+  }
+  return hist;
+}
+
+function analyzeTexture(imageData) {
+  const data = imageData.data;
+  let sum = 0;
+  const values = [];
+  for (let i = 0; i < data.length; i += 4) {
+    const g = (data[i] + data[i+1] + data[i+2]) / 3;
+    values.push(g);
+    sum += g;
+  }
+  const avg = sum / values.length;
+  const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
+  return { avg, dev };
 }
 
 function estimateShapeMatch(img1, img2) {
@@ -137,36 +150,6 @@ function estimateShapeMatch(img1, img2) {
   return matched / pixels * 100;
 }
 
-function analyzeTexture(imageData) {
-  const data = imageData.data;
-  let sum = 0, values = [];
-  for (let i = 0; i < data.length; i += 4) {
-    const g = (data[i] + data[i+1] + data[i+2]) / 3;
-    values.push(g); sum += g;
-  }
-  const avg = sum / values.length;
-  const dev = Math.sqrt(values.reduce((a, v) => a + Math.pow(v - avg, 2), 0) / values.length);
-  return { avg, dev };
-}
-
-function compareColorSimilarity(img1, img2) {
-  const hist1 = getColorHistogram(img1.data);
-  const hist2 = getColorHistogram(img2.data);
-  let diff = 0;
-  for (let i = 0; i < 256; i++) diff += Math.abs(hist1[i] - hist2[i]);
-  const total = hist1.reduce((a,b) => a+b,0) + hist2.reduce((a,b) => a+b,0);
-  return 100 - (diff / total) * 100;
-}
-
-function getColorHistogram(data) {
-  const hist = Array(256).fill(0);
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = Math.round((data[i] + data[i+1] + data[i+2]) / 3);
-    hist[gray]++;
-  }
-  return hist;
-}
-
 function getScientificDecision(c, t, s, threshold = 85) {
   const finalScore = (c + t + s) / 3;
   const verdict = finalScore >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
@@ -176,26 +159,6 @@ function getScientificDecision(c, t, s, threshold = 85) {
 function confirmMatch() {
   alert("🛡️ تحقق فعلي تم بنجاح. جميع الوحدات متطابقة بدرجة عالية.");
 }
-
-// 🧲 دعم السحب اليدوي للمربعات
-["leftBox", "rightBox"].forEach(id => {
-  const box = document.getElementById(id);
-  let offsetX, offsetY, isDragging = false;
-
-  box.addEventListener("mousedown", e => {
-    isDragging = true;
-    offsetX = e.offsetX;
-    offsetY = e.offsetY;
-  });
-
-  document.addEventListener("mousemove", e => {
-    if (isDragging) {
-      const parent = box.parentElement.getBoundingClientRect();
-      let x = e.clientX - parent.left - offsetX;
-      let y = e.clientY - parent.top - offsetY;
-      box.style.left = x + "px";
-      box.style.top = y + "px";
-    }
-  });
-
-  document.addEvent
+</script>
+</body>
+</html>
