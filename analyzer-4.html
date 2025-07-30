@@ -1,94 +1,81 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>تحديد يدوي بالصورة</title>
+  <meta charset="UTF-8" />
+  <title>Smart Compare - Unified</title>
   <style>
-    body {
-      background: #f4f4f4;
-      font-family: 'Cairo', sans-serif;
-      text-align: center;
-      padding: 1rem;
-    }
-    canvas {
-      border: 2px dashed #ff8800;
-      cursor: crosshair;
-      margin-top: 1rem;
-      max-width: 90%;
-    }
-    #output {
-      margin-top: 1rem;
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 0.5rem;
-      border-radius: 8px;
-      display: inline-block;
-    }
-    input[type="file"] {
-      margin-top: 1rem;
-      padding: 0.5rem;
-      border-radius: 8px;
-      border: none;
-      background: #ff8800;
-      color: white;
-      cursor: pointer;
-    }
+    body { font-family: sans-serif; margin: 0; padding: 10px; background: #f4f4f4; }
+    canvas, video, img { max-width: 100%; }
+    #result { margin-top: 10px; }
+    .controls { margin-bottom: 10px; }
   </style>
 </head>
 <body>
-  <h2>✂️ التحديد اليدوي لمنطقة من الصورة</h2>
-  <input type="file" id="upload" accept="image/*">
-  <br>
-  <canvas id="canvas" width="600" height="400"></canvas>
-  <div id="output">📍 لم يتم تحديد أي منطقة بعد</div>
+  <h1>🔬 Smart Compare</h1>
+
+  <div class="controls">
+    <input type="file" id="baseImageInput" accept="image/*" />
+    <input type="file" id="checkImageInput" accept="image/*" />
+    <button id="startCamera">📸 تشغيل الكاميرا</button>
+    <button id="analyzeSelection">🧪 تحليل التحديد</button>
+  </div>
+
+  <video id="camera" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+  <img id="baseImage" alt="Base Image" />
+  <img id="checkImage" alt="Check Image" />
+  <div id="result">نتيجة التحليل ستظهر هنا...</div>
 
   <script>
-    const upload = document.getElementById('upload');
+    const camera = document.getElementById('camera');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    let img = new Image();
-    let isDragging = false;
-    let startX, startY, currentX, currentY;
+    let selection = null;
 
-    // رفع الصورة
-    upload.addEventListener('change', (e) => {
+    document.getElementById('startCamera').onclick = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      camera.srcObject = stream;
+    };
+
+    document.getElementById('baseImageInput').onchange = (e) => {
       const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = () => {
-        img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        img.src = reader.result;
-      };
-      if (file) reader.readAsDataURL(file);
-    });
+      if (file) document.getElementById('baseImage').src = URL.createObjectURL(file);
+    };
 
-    // السحب
-    canvas.addEventListener('mousedown', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      startX = e.clientX - rect.left;
-      startY = e.clientY - rect.top;
+    document.getElementById('checkImageInput').onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) document.getElementById('checkImage').src = URL.createObjectURL(file);
+    };
+
+    canvas.width = 640;
+    canvas.height = 480;
+    let isDragging = false;
+    canvas.addEventListener('mousedown', e => {
       isDragging = true;
+      selection = { x: e.offsetX, y: e.offsetY, w: 0, h: 0 };
     });
 
-    canvas.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      const rect = canvas.getBoundingClientRect();
-      currentX = e.clientX - rect.left;
-      currentY = e.clientY - rect.top;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = "red";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+    canvas.addEventListener('mousemove', e => {
+      if (isDragging) {
+        selection.w = e.offsetX - selection.x;
+        selection.h = e.offsetY - selection.y;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = 'red';
+        ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
+      }
     });
 
     canvas.addEventListener('mouseup', () => {
       isDragging = false;
-      const x = Math.min(startX, currentX);
-      const y = Math.min(startY, currentY);
-      const w = Math.abs(currentX - startX);
-      const h = Math.abs(currentY - startY);
-      document.getElementById("output").innerText = `📍 تم تحديد: X=${x.toFixed(0)}, Y=${y.toFixed(0)}, العرض=${w.toFixed(0)}, الارتفاع=${h.toFixed(0)}`;
     });
+
+    document.getElementById('analyzeSelection').onclick = () => {
+      if (!selection) return alert('🔎 الرجاء تحديد منطقة أولاً!');
+      ctx.font = '16px Arial';
+      ctx.fillStyle = 'blue';
+      ctx.fillText('تحليل جاري...', selection.x, selection.y - 5);
+      document.getElementById('result').textContent = '✅ التحليل تم بنجاح (نموذج أولي)';
+    };
   </script>
 </body>
 </html>
