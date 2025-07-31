@@ -11,7 +11,7 @@
       text-align: center;
       padding: 1rem;
     }
-    img {
+    img, canvas.preview {
       max-width: 500px;
       width: 100%;
       border: 2px solid #ff8800;
@@ -34,6 +34,12 @@
       color: #ccc;
       white-space: pre-line;
     }
+    .region-container {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
     canvas { display: none; }
   </style>
 </head>
@@ -43,15 +49,23 @@
   <input type="file" accept="image/*" onchange="uploadImage(this)">
   <img id="preview">
   <canvas id="canvas"></canvas>
-  <button onclick="autoDetect()">🔍 اختيار تلقائي لأكثر منطقتين تشابهًا</button>
+  <button onclick="autoDetect()">🔍 اختيار تلقائي لأكثر منطقتين كبيرة ومتشابهة</button>
   <button onclick="deepAnalyze()">🧪 التحليل العلمي للتزوير</button>
+
+  <div class="region-container">
+    <canvas class="preview" id="region1" width="200" height="200"></canvas>
+    <canvas class="preview" id="region2" width="200" height="200"></canvas>
+  </div>
+
   <div id="results"></div>
 
 <script>
-let selectedZones = [];
+let selectedZones = [], selectedCoords = [];
 const preview = document.getElementById("preview");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const r1 = document.getElementById("region1").getContext("2d");
+const r2 = document.getElementById("region2").getContext("2d");
 
 function uploadImage(input) {
   const file = input.files[0];
@@ -74,32 +88,32 @@ function autoDetect() {
   if (!preview.src) return alert("⚠️ لم يتم تحميل صورة بعد.");
   ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
 
-  const zoneSize = 120, step = 80, zones = [];
-  for (let y = 0; y < canvas.height - zoneSize; y += step) {
-    for (let x = 0; x < canvas.width - zoneSize; x += step) {
-      const data = ctx.getImageData(x, y, zoneSize, zoneSize);
-      const brightness = averageBrightness(data);
-      zones.push({ x, y, data, brightness });
-    }
+  const minArea = canvas.width * canvas.height * 0.4;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const regions = [
+    { x: 0, y: 0, w: canvas.width / 2, h: canvas.height },
+    { x: canvas.width / 2, y: 0, w: canvas.width / 2, h: canvas.height }
+  ];
+
+  const valid = regions.filter(r => r.w * r.h >= minArea);
+  if (valid.length < 2) {
+    document.getElementById("results").innerText = "❌ لا توجد منطقتان بمساحة كافية.";
+    return;
   }
 
-  let best = { score: 0, a: null, b: null };
-  for (let i = 0; i < zones.length; i++) {
-    for (let j = i + 1; j < zones.length; j++) {
-      const score = compareZones(zones[i], zones[j]);
-      if (score > best.score) best = { score, a: zones[i], b: zones[j] };
-    }
-  }
+  selectedCoords = valid;
+  selectedZones = valid.map(r => ctx.getImageData(r.x, r.y, r.w, r.h));
+  r1.clearRect(0, 0, 200, 200);
+  r2.clearRect(0, 0, 200, 200);
+  r1.drawImage(canvas, valid[0].x, valid[0].y, valid[0].w, valid[0].h, 0, 0, 200, 200);
+  r2.drawImage(canvas, valid[1].x, valid[1].y, valid[1].w, valid[1].h, 0, 0, 200, 200);
 
-  selectedZones = [best.a.data, best.b.data];
-  document.getElementById("results").innerText =
-    `📍 تم تحديد منطقتين بنسبة تشابه: ${best.score.toFixed(1)}%`;
+  document.getElementById("results").innerText = "👀 تم عرض معاينة مستقلّة للمنطقتين.";
 }
 
 function deepAnalyze() {
   if (selectedZones.length !== 2)
-    return alert("❌ يجب اختيار مناطق للتحليل أولًا.");
-
+    return alert("❌ يجب معاينة منطقتين أولًا.");
   const [a, b] = selectedZones;
   const shapeScore = shapeMatch(a, b);
   const colorScore = colorMatch(a.data, b.data);
@@ -117,28 +131,6 @@ ${verdict}
   `;
 }
 
-function averageBrightness(data) {
-  let sum = 0;
-  for (let i = 0; i < data.data.length; i += 4)
-    sum += (data.data[i] + data.data[i+1] + data.data[i+2]) / 3;
-  return sum / (data.data.length / 4);
-}
-
-function compareZones(z1, z2) {
-  const bDiff = Math.abs(z1.brightness - z2.brightness);
-  const t1 = texture(z1.data), t2 = texture(z2.data);
-  return 100 - (Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev) + bDiff) / 3;
-}
-
-function texture(data) {
-  const values = [];
-  for (let i = 0; i < data.data.length; i += 4)
-    values.push((data.data[i] + data.data[i+1] + data.data[i+2]) / 3);
-  const avg = values.reduce((a, b) => a + b) / values.length;
-  const dev = Math.sqrt(values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length);
-  return { avg, dev };
-}
-
 function shapeMatch(img1, img2) {
   let match = 0;
   for (let i = 0; i < img1.data.length; i += 4) {
@@ -150,17 +142,6 @@ function shapeMatch(img1, img2) {
 }
 
 function colorMatch(d1, d2) {
-  function rgbToHsv(r, g, b) {
-    r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const v = max, d = max - min, s = max === 0 ? 0 : d / max;
-    let h = max === min ? 0 :
-      max === r ? ((g - b) / d + (g < b ? 6 : 0)) :
-      max === g ? ((b - r) / d + 2) :
-                  ((r - g) / d + 4);
-    return [h / 6 * 360, s * 100, v * 100];
-  }
-
   let h1=0,s1=0,v1=0,h2=0,s2=0,v2=0;
   for (let i = 0; i < d1.length; i += 4) {
     const [a1,b1,c1] = rgbToHsv(d1[i],d1[i+1],d1[i+2]);
@@ -174,6 +155,20 @@ function colorMatch(d1, d2) {
   const diffV = Math.abs(v1/n - v2/n) / 100 * 30;
   return Math.max(0, 100 - (diffH + diffS + diffV));
 }
-</script>
-</body>
-</html>
+
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const v = max, d = max - min, s = max === 0 ? 0 : d / max;
+  let h = max === min ? 0 :
+    max === r ? ((g - b) / d + (g < b ? 6 : 0)) :
+    max === g ? ((b - r) / d + 2) :
+                ((r - g) / d + 4);
+  return [h / 6 * 360, s * 100, v * 100];
+}
+
+function texture(data) {
+  const values = [];
+  for (let i = 0; i < data.data.length; i += 4)
+    values.push((data.data[i] + data.data[i+1] + data.data[i+2]) / 3);
+  const avg = values
