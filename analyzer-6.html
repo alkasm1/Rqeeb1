@@ -1,10 +1,26 @@
-<!-- واجهة المستخدم -->
-<canvas id="imageCanvas"></canvas>
+<!-- 🖼️ اختيار الصورة -->
+<input type="file" id="imageUpload" accept="image/*" onchange="loadImage(event)">
 <br>
+<canvas id="imageCanvas"></canvas>
+<br><br>
+
+<!-- 🔘 أزرار التحكم -->
 <button onclick="previewShapes()">👁️ معاينة الأشكال الهندسية</button>
 <button onclick="analyzeImage()">🧠 تحليل الصورة</button>
 
 <script type="text/javascript">
+function loadImage(event) {
+  let img = new Image();
+  img.onload = function () {
+    let canvas = document.getElementById('imageCanvas');
+    let ctx = canvas.getContext('2d');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+  };
+  img.src = URL.createObjectURL(event.target.files[0]);
+}
+
 function previewShapes() {
   let src = cv.imread('imageCanvas');
   let gray = new cv.Mat();
@@ -22,7 +38,7 @@ function previewShapes() {
     let area = cv.contourArea(cnt);
 
     if (area >= imageArea * 0.4) {
-      let color = new cv.Scalar(255, 0, 0, 255); // أحمر
+      let color = new cv.Scalar(255, 0, 0, 255); // لون أحمر
       cv.drawContours(preview, contours, i, color, 2, cv.LINE_8, hierarchy, 0);
     }
   }
