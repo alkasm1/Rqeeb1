@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>analyzer-6</title>
+  <style>
+    body {
+      background: #111;
+      color: #ff8800;
+      font-family: 'Cairo', sans-serif;
+      text-align: center;
+      padding: 1rem;
+    }
+    video {
+      width: 100%;
+      max-width: 480px;
+      border: 2px solid #ff8800;
+      border-radius: 10px;
+    }
+    .box {
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 3px dashed #00ffff;
+      pointer-events: none;
+    }
+    button {
+      margin: 1rem;
+      padding: 0.8rem 1.2rem;
+      font-size: 1rem;
+      border-radius: 8px;
+      background: #ff8800;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    canvas { display: none; }
+    #results {
+      margin-top: 1rem;
+      font-size: 1rem;
+      color: #ccc;
+      white-space: pre-line;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>📐 analyzer-6 - التحقق البصري داخل مربع موحد</h2>
+  <div style="position: relative; display: inline-block;">
+    <video id="video" autoplay muted playsinline></video>
+    <div class="box" id="targetBox"></div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <br>
+  <button onclick="runAnalyzer()">🔎 استخراج الشكلين وتحليل التشابه</button>
+  <div id="results"></div>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => video.srcObject = stream)
+      .catch(err => alert("🚫 الكاميرا غير متاحة"));
+
+    function runAnalyzer() {
+      if (video.readyState < 2) {
+        alert("📷 الكاميرا غير جاهزة بعد");
+        return;
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const boxW = 400, boxH = 400;
+      const boxX = canvas.width / 2 - boxW / 2;
+      const boxY = 60;
+
+      const fullRegion = ctx.getImageData(boxX, boxY, boxW, boxH);
+
+      // استخراج شكلين هندسيين من نفس المربع
+      const { shape1, shape2, shapeScore } = extractSimilarShapes(fullRegion);
+      if (!shape1 || !shape2) {
+        document.getElementById("results").innerText = "⚠️ لم يتم العثور على شكلين هندسيين متشابهين داخل المربع.";
+        return;
+      }
+
+      const colorScore = compareHSVSimilarity(shape1.data, shape2.data);
+      const texture1 = analyzeTexture(shape1);
+      const texture2 = analyzeTexture(shape2);
+      const diffAvg = Math.abs(texture1.avg - texture2.avg);
+      const diffDev = Math.abs(texture1.dev - texture2.dev);
+      const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
+
+      const final = getScientificDecision(colorScore, textureScore);
+
+      document.getElementById("results").innerHTML = `
+🧮 الشكل الهندسي: ${shapeScore.toFixed(1)}%
+🎨 تشابه اللون: ${colorScore.toFixed(1)}%
+🧵 تشابه النسيج: ${textureScore.toFixed(1)}%
+📊 القرار النهائي: ${final.finalScore}%  
+${final.decision}
+      `;
+    }
+
+    function extractSimilarShapes(region) {
+      // تحليل يدوي مبسط: نختار منطقتين متقابلتين من المربع
+      const { width, height } = region;
+      const halfW = width / 2;
+
+      const shape1 = ctx.getImageData(region.width / 4, region.height / 4, 100, 100);
+      const shape2 = ctx.getImageData(region.width * 3/4 - 100, region.height / 4, 100, 100);
+
+      const shapeScore = estimateShapeMatch(shape1, shape2);
+      return { shape1, shape2, shapeScore };
+    }
+
+    function estimateShapeMatch(img1, img2) {
+      let matched = 0;
+      const pixels = img1.data.length / 4;
+      for (let i = 0; i < img1.data.length; i += 4) {
+        const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
+        const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
+        if (Math.abs(g1 - g2) < 30) matched++;
+      }
+      return matched / pixels * 100;
+    }
+
+    function compareHSVSimilarity(data1, data2) {
+      function rgbToHsv(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, v = max;
+        const d = max - min;
+        s = max === 0 ? 0 : d / max;
+        h = max === min ? 0 :
+          max === r ? (g - b) / d + (g < b ? 6 : 0) :
+          max === g ? (b - r) / d + 2 :
+                      (r - g) / d + 4;
+        h = h / 6;
+        return [h * 360, s * 100, v * 100];
+      }
+
+      let totalH1 = 0, totalS1 = 0, totalV1 = 0;
+      let totalH2 = 0, totalS2 = 0, totalV2 = 0;
+      const pixels = data1.length / 4;
+
+      for (let i = 0; i < data1.length; i += 4) {
+        const [h1,s1,v1] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
+        const [h2,s2,v2] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
+        totalH1 += h1; totalS1 += s1; totalV1 += v1;
+        totalH2 += h2; totalS2 += s2; totalV2 += v2;
+      }
+
+      const avgH1 = totalH1 / pixels, avgS1 = totalS1 / pixels, avgV1 = totalV1 / pixels;
+      const avgH2 = totalH2 / pixels, avgS2 = totalS2 / pixels, avgV2 = totalV2 / pixels;
+
+      const diffH = Math.abs(avgH1 - avgH2) / 360 * 40;
+      const diffS = Math.abs(avgS1 - avgS2) / 100 * 30;
+      const diffV = Math.abs(avgV1 - avgV2) / 100 * 30;
+      const score = 100 - (diffH + diffS + diffV);
+      return Math.max(0, score);
+    }
+
+    function analyzeTexture(imageData) {
+      const data = imageData.data;
+      let sum = 0;
+      const values = [];
+      for (let i = 0; i < data.length; i += 4) {
+        const g = (data[i] + data[i+1] + data[i+2]) / 3;
+        values.push(g);
+        sum += g;
+      }
+      const avg = sum / values.length;
+      const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
+      return { avg, dev };
+    }
+
+    function getScientificDecision(color, texture, threshold = 85) {
+      const score = (color + texture) / 2;
+      const verdict = score >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
+      return { finalScore: score.toFixed(1), decision: verdict };
+    }
+  </script>
+</body>
+</html>
