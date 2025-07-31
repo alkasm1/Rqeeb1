@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
-  <title>التحقق الذكي للمستندات</title>
+  <title>كشف المستندات والعملات المزورة</title>
   <style>
     body {
       background: #0b0b0b;
@@ -41,7 +41,7 @@
   </style>
 </head>
 <body>
-  <h2>🧠 التحقق الذكي من المستندات</h2>
+  <h2>🛡️ كشف المستندات والعملات المزورة</h2>
 
   <video id="video" autoplay playsinline></video>
   <br>
@@ -50,13 +50,12 @@
   <canvas id="canvas"></canvas>
 
   <br>
-  <button onclick="autoDetect()">🔍 اختيار تلقائي للأشكال المتشابهة</button>
-  <button onclick="deepAnalyze()">🧪 التحليل العلمي للأجزاء</button>
+  <button onclick="autoDetect()">📍 تحديد تلقائي</button>
+  <button onclick="deepAnalyze()">🧪 تحليل ذكي</button>
 
   <div id="results"></div>
 
 <script>
-// العناصر
 const video = document.getElementById("video");
 const uploadedImage = document.getElementById("uploadedImage");
 const canvas = document.getElementById("canvas");
@@ -64,16 +63,15 @@ const ctx = canvas.getContext("2d");
 let selectedZones = [];
 let fromUpload = false;
 
-// تشغيل الكاميرا تلقائيًا
 navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
   .then(stream => video.srcObject = stream)
-  .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
+  .catch(() => alert("🚫 فشل تشغيل الكاميرا"));
 
 function uploadImage(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function (e) {
+  reader.onload = e => {
     uploadedImage.src = e.target.result;
     uploadedImage.onload = () => {
       fromUpload = true;
@@ -97,9 +95,7 @@ function autoDetect() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   }
 
-  const zoneSize = 120, step = 80;
-  const zones = [];
-
+  const zoneSize = 120, step = 80, zones = [];
   for (let y = 0; y < canvas.height - zoneSize; y += step) {
     for (let x = 0; x < canvas.width - zoneSize; x += step) {
       const data = ctx.getImageData(x, y, zoneSize, zoneSize);
@@ -119,7 +115,7 @@ function autoDetect() {
 
   selectedZones = [bestMatch.a.data, bestMatch.b.data];
   document.getElementById("results").innerText =
-    `✅ تم اختيار أكثر منطقتين تشابهًا بنسبة: ${bestMatch.score.toFixed(1)}%`;
+    `✅ تم اختيار منطقتين بنسبة تشابه: ${bestMatch.score.toFixed(1)}%`;
 }
 
 function deepAnalyze() {
@@ -131,18 +127,18 @@ function deepAnalyze() {
   const colorScore = compareHSVSimilarity(leftData.data, rightData.data);
   const t1 = analyzeTexture(leftData), t2 = analyzeTexture(rightData);
   const textureScore = 100 - Math.min(Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev), 100);
-  const decision = getScientificDecision(colorScore, textureScore);
+  const finalScore = ((colorScore + textureScore) / 2).toFixed(1);
+  const decision = finalScore >= 85 ? "✅ مطابق علميًا" : "⚠️ هناك شك في التزوير";
 
   document.getElementById("results").innerHTML = `
 📐 الشكل الهندسي: ${shapeScore.toFixed(1)}%
 🎨 تشابه اللون: ${colorScore.toFixed(1)}%
 🧵 النسيج: ${textureScore.toFixed(1)}%
-🧠 القرار النهائي: ${decision.finalScore}%
-${decision.decision}
+🧠 النتيجة النهائية: ${finalScore}%
+${decision}
   `;
 }
 
-// أدوات التحليل
 function getBrightness(data) {
   let sum = 0, pixels = data.data;
   for (let i = 0; i < pixels.length; i += 4)
@@ -150,13 +146,11 @@ function getBrightness(data) {
   return sum / (pixels.length / 4);
 }
 
-function matchScore(zone1, zone2) {
-  const bDiff = Math.abs(zone1.brightness - zone2.brightness);
-  const t1 = analyzeTexture(zone1.data), t2 = analyzeTexture(zone2.data);
-  const diffAvg = Math.abs(t1.avg - t2.avg);
-  const diffDev = Math.abs(t1.dev - t2.dev);
-  const textureScore = 100 - (diffAvg + diffDev + bDiff) / 3;
-  return Math.max(0, textureScore);
+function matchScore(z1, z2) {
+  const bDiff = Math.abs(z1.brightness - z2.brightness);
+  const t1 = analyzeTexture(z1.data), t2 = analyzeTexture(z2.data);
+  const score = 100 - (Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev) + bDiff) / 3;
+  return Math.max(0, score);
 }
 
 function analyzeTexture(data) {
@@ -190,4 +184,15 @@ function compareHSVSimilarity(d1, d2) {
     return [h / 6 * 360, s * 100, v * 100];
   }
 
-  let h1 = 0, s1 = 0, v1 = 0, h2 = 0, s2 = 0, v2 = 0
+  let h1 = 0, s1 = 0, v1 = 0, h2 = 0, s2 = 0, v2 = 0;
+  for (let i = 0; i < d1.length; i += 4) {
+    const [a1, b1, c1] = rgbToHsv(d1[i], d1[i+1], d1[i+2]);
+    const [a2, b2, c2] = rgbToHsv(d2[i], d2[i+1], d2[i+2]);
+    h1 += a1; s1 += b1; v1 += c1; h2 += a2; s2 += b2; v2 += c2;
+  }
+
+  const n = d1.length / 4;
+  const diffH = Math.abs(h1/n - h2/n) / 360 * 40;
+  const diffS = Math.abs(s1/n - s2/n) / 100 * 30;
+  const diffV = Math.abs(v1/n - v2/n) / 100 * 30;
+  return Math.max(0, 100
