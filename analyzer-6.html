@@ -11,7 +11,7 @@
       text-align: center;
       padding: 1rem;
     }
-    video {
+    video, img {
       width: 100%;
       max-width: 500px;
       border: 2px solid #ff8800;
@@ -28,39 +28,74 @@
       cursor: pointer;
     }
     canvas { display: none; }
-    #results { margin-top: 1rem; font-size: 1rem; color: #ccc; }
+    input[type="file"] {
+      margin: 1rem auto;
+      color: #ccc;
+    }
+    #results {
+      margin-top: 1rem;
+      font-size: 1rem;
+      color: #ccc;
+      white-space: pre-line;
+    }
   </style>
 </head>
 <body>
   <h2>🧠 التحقق الذكي من المستندات</h2>
+
   <video id="video" autoplay playsinline></video>
-  <br />
+  <br>
+  <input type="file" accept="image/*" onchange="uploadImage(this)">
+  <img id="uploadedImage" style="display:none" />
+  <canvas id="canvas"></canvas>
+
+  <br>
   <button onclick="autoDetect()">🔍 اختيار تلقائي للأشكال المتشابهة</button>
   <button onclick="deepAnalyze()">🧪 التحليل العلمي للأجزاء</button>
-  <canvas id="canvas"></canvas>
+
   <div id="results"></div>
 
 <script>
-// عناصر الكاميرا
+// العناصر
 const video = document.getElementById("video");
+const uploadedImage = document.getElementById("uploadedImage");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 let selectedZones = [];
+let fromUpload = false;
 
-// ✅ تشغيل الكاميرا تلقائيًا
-window.addEventListener("load", () => {
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-    .then(stream => video.srcObject = stream)
-    .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
-});
+// تشغيل الكاميرا تلقائيًا
+navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+  .then(stream => video.srcObject = stream)
+  .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
 
-// 🔍 اختيار تلقائي لأكثر منطقتين تشابهًا
+function uploadImage(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    uploadedImage.src = e.target.result;
+    uploadedImage.onload = () => {
+      fromUpload = true;
+      video.style.display = "none";
+      canvas.width = uploadedImage.width;
+      canvas.height = uploadedImage.height;
+      ctx.drawImage(uploadedImage, 0, 0, canvas.width, canvas.height);
+    };
+    uploadedImage.style.display = "block";
+  };
+  reader.readAsDataURL(file);
+}
+
 function autoDetect() {
-  if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة بعد");
+  if (!fromUpload && video.readyState < 2)
+    return alert("📷 الكاميرا غير جاهزة بعد");
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  if (!fromUpload) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  }
 
   const zoneSize = 120, step = 80;
   const zones = [];
@@ -77,38 +112,39 @@ function autoDetect() {
   for (let i = 0; i < zones.length; i++) {
     for (let j = i + 1; j < zones.length; j++) {
       const score = matchScore(zones[i], zones[j]);
-      if (score > bestMatch.score) bestMatch = { score, a: zones[i], b: zones[j] };
+      if (score > bestMatch.score)
+        bestMatch = { score, a: zones[i], b: zones[j] };
     }
   }
 
   selectedZones = [bestMatch.a.data, bestMatch.b.data];
-  document.getElementById("results").innerHTML =
+  document.getElementById("results").innerText =
     `✅ تم اختيار أكثر منطقتين تشابهًا بنسبة: ${bestMatch.score.toFixed(1)}%`;
 }
 
-// 🧪 التحليل العلمي للأجزاء
 function deepAnalyze() {
-  if (selectedZones.length !== 2) return alert("❌ لا توجد مناطق محددة!");
+  if (selectedZones.length !== 2)
+    return alert("❌ لا توجد مناطق محددة!");
 
   const [leftData, rightData] = selectedZones;
   const shapeScore = estimateShapeMatch(leftData, rightData);
   const colorScore = compareHSVSimilarity(leftData.data, rightData.data);
-  const t1 = analyzeTexture(leftData);
-  const t2 = analyzeTexture(rightData);
+  const t1 = analyzeTexture(leftData), t2 = analyzeTexture(rightData);
   const textureScore = 100 - Math.min(Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev), 100);
   const decision = getScientificDecision(colorScore, textureScore);
 
   document.getElementById("results").innerHTML = `
-    📐 الشكل الهندسي: ${shapeScore.toFixed(1)}%<br>
-    🎨 تشابه اللون: ${colorScore.toFixed(1)}%<br>
-    🧵 النسيج: ${textureScore.toFixed(1)}%<br><br>
-    🧠 القرار النهائي: ${decision.finalScore}%<br>
-    ${decision.decision}
+📐 الشكل الهندسي: ${shapeScore.toFixed(1)}%
+🎨 تشابه اللون: ${colorScore.toFixed(1)}%
+🧵 النسيج: ${textureScore.toFixed(1)}%
+🧠 القرار النهائي: ${decision.finalScore}%
+${decision.decision}
   `;
 }
 
-function getBrightness(imageData) {
-  let sum = 0, pixels = imageData.data;
+// أدوات التحليل
+function getBrightness(data) {
+  let sum = 0, pixels = data.data;
   for (let i = 0; i < pixels.length; i += 4)
     sum += (pixels[i] + pixels[i+1] + pixels[i+2]) / 3;
   return sum / (pixels.length / 4);
@@ -116,8 +152,7 @@ function getBrightness(imageData) {
 
 function matchScore(zone1, zone2) {
   const bDiff = Math.abs(zone1.brightness - zone2.brightness);
-  const t1 = analyzeTexture(zone1.data);
-  const t2 = analyzeTexture(zone2.data);
+  const t1 = analyzeTexture(zone1.data), t2 = analyzeTexture(zone2.data);
   const diffAvg = Math.abs(t1.avg - t2.avg);
   const diffDev = Math.abs(t1.dev - t2.dev);
   const textureScore = 100 - (diffAvg + diffDev + bDiff) / 3;
@@ -134,40 +169,25 @@ function analyzeTexture(data) {
 }
 
 function estimateShapeMatch(img1, img2) {
-  let match = 0, total = img1.data.length;
-  for (let i = 0; i < total; i += 4) {
+  let match = 0;
+  for (let i = 0; i < img1.data.length; i += 4) {
     const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
     const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
     if (Math.abs(g1 - g2) < 30) match++;
   }
-  return match / (total / 4) * 100;
+  return match / (img1.data.length / 4) * 100;
 }
 
 function compareHSVSimilarity(d1, d2) {
   function rgbToHsv(r, g, b) {
     r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-    const v = max, s = max === 0 ? 0 : d / max;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const v = max, d = max - min, s = max === 0 ? 0 : d / max;
     let h = max === min ? 0 :
       max === r ? ((g - b) / d + (g < b ? 6 : 0)) :
       max === g ? ((b - r) / d + 2) :
-      ((r - g) / d + 4);
+                  ((r - g) / d + 4);
     return [h / 6 * 360, s * 100, v * 100];
   }
 
-  let h1 = 0, s1 = 0, v1 = 0, h2 = 0, s2 = 0, v2 = 0;
-  for (let i = 0; i < d1.length; i += 4) {
-    const hsv1 = rgbToHsv(d1[i], d1[i+1], d1[i+2]);
-    const hsv2 = rgbToHsv(d2[i], d2[i+1], d2[i+2]);
-    h1 += hsv1[0]; s1 += hsv1[1]; v1 += hsv1[2];
-    h2 += hsv2[0]; s2 += hsv2[1]; v2 += hsv2[2];
-  }
-
-  const diffH = Math.abs(h1 - h2) / (d1.length / 4) / 360 * 40;
-  const diffS = Math.abs(s1 - s2) / (d1.length / 4) / 100 * 30;
-  const diffV = Math.abs(v1 - v2) / (d1.length / 4) / 100 * 30;
-  return Math.max(0, 100 - (diffH + diffS + diffV));
-}
-
-function getScientificDecision(color, texture, threshold = 85) {
-  const score = (color + texture) /
+  let h1 = 0, s1 = 0, v1 = 0, h2 = 0, s2 = 0, v2 = 0
