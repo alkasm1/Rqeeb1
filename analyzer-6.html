@@ -18,7 +18,7 @@
       margin-bottom: 10px;
     }
     button {
-      margin: 1rem;
+      margin: 0.5rem;
       padding: 0.8rem;
       font-size: 1rem;
       border-radius: 8px;
@@ -29,38 +29,40 @@
     }
     canvas { display: none; }
     #results { margin-top: 1rem; font-size: 1rem; color: #ccc; }
-    #confirmBtn { display: none; }
   </style>
 </head>
 <body>
   <h2>🧠 التحقق الذكي من المستندات</h2>
   <video id="video" autoplay playsinline></video>
+  <br />
   <button onclick="autoDetect()">🔍 اختيار تلقائي للأشكال المتشابهة</button>
-  <button id="confirmBtn" onclick="deepAnalyze()">🧪 التحليل العلمي للأجزاء</button>
+  <button onclick="deepAnalyze()">🧪 التحليل العلمي للأجزاء</button>
   <canvas id="canvas"></canvas>
   <div id="results"></div>
 
 <script>
+// عناصر الكاميرا
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-
 let selectedZones = [];
 
+// ✅ تشغيل الكاميرا تلقائيًا
 window.addEventListener("load", () => {
   navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
     .then(stream => video.srcObject = stream)
-    .catch(() => alert("🚫 فشل تشغيل الكاميرا"));
+    .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
 });
 
+// 🔍 اختيار تلقائي لأكثر منطقتين تشابهًا
 function autoDetect() {
   if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة بعد");
+
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  const zoneSize = 120;
-  const step = 80;
+  const zoneSize = 120, step = 80;
   const zones = [];
 
   for (let y = 0; y < canvas.height - zoneSize; y += step) {
@@ -80,18 +82,35 @@ function autoDetect() {
   }
 
   selectedZones = [bestMatch.a.data, bestMatch.b.data];
-  document.getElementById("confirmBtn").style.display = "inline-block";
   document.getElementById("results").innerHTML =
-    `✅ تم اختيار أكثر منطقتين تشابهًا (%${bestMatch.score.toFixed(1)}).`;
+    `✅ تم اختيار أكثر منطقتين تشابهًا بنسبة: ${bestMatch.score.toFixed(1)}%`;
+}
+
+// 🧪 التحليل العلمي للأجزاء
+function deepAnalyze() {
+  if (selectedZones.length !== 2) return alert("❌ لا توجد مناطق محددة!");
+
+  const [leftData, rightData] = selectedZones;
+  const shapeScore = estimateShapeMatch(leftData, rightData);
+  const colorScore = compareHSVSimilarity(leftData.data, rightData.data);
+  const t1 = analyzeTexture(leftData);
+  const t2 = analyzeTexture(rightData);
+  const textureScore = 100 - Math.min(Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev), 100);
+  const decision = getScientificDecision(colorScore, textureScore);
+
+  document.getElementById("results").innerHTML = `
+    📐 الشكل الهندسي: ${shapeScore.toFixed(1)}%<br>
+    🎨 تشابه اللون: ${colorScore.toFixed(1)}%<br>
+    🧵 النسيج: ${textureScore.toFixed(1)}%<br><br>
+    🧠 القرار النهائي: ${decision.finalScore}%<br>
+    ${decision.decision}
+  `;
 }
 
 function getBrightness(imageData) {
-  let sum = 0;
-  const pixels = imageData.data;
-  for (let i = 0; i < pixels.length; i += 4) {
-    const avg = (pixels[i] + pixels[i+1] + pixels[i+2]) / 3;
-    sum += avg;
-  }
+  let sum = 0, pixels = imageData.data;
+  for (let i = 0; i < pixels.length; i += 4)
+    sum += (pixels[i] + pixels[i+1] + pixels[i+2]) / 3;
   return sum / (pixels.length / 4);
 }
 
@@ -107,39 +126,15 @@ function matchScore(zone1, zone2) {
 
 function analyzeTexture(data) {
   const values = [];
-  for (let i = 0; i < data.data.length; i += 4) {
-    const g = (data.data[i] + data.data[i+1] + data.data[i+2]) / 3;
-    values.push(g);
-  }
+  for (let i = 0; i < data.data.length; i += 4)
+    values.push((data.data[i] + data.data[i+1] + data.data[i+2]) / 3);
   const avg = values.reduce((a, b) => a + b) / values.length;
   const dev = Math.sqrt(values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length);
   return { avg, dev };
 }
 
-function deepAnalyze() {
-  if (selectedZones.length !== 2) return alert("❌ لا توجد مناطق محددة!");
-
-  const [leftData, rightData] = selectedZones;
-  const shapeScore = estimateShapeMatch(leftData, rightData);
-  const colorScore = compareHSVSimilarity(leftData.data, rightData.data);
-  const t1 = analyzeTexture(leftData);
-  const t2 = analyzeTexture(rightData);
-  const textureScore = 100 - Math.min(Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev), 100);
-
-  const decision = getScientificDecision(colorScore, textureScore);
-
-  document.getElementById("results").innerHTML = `
-    📐 الشكل الهندسي: ${shapeScore.toFixed(1)}%<br>
-    🎨 تشابه اللون: ${colorScore.toFixed(1)}%<br>
-    🧵 النسيج: ${textureScore.toFixed(1)}%<br><br>
-    🧠 القرار النهائي: ${decision.finalScore}%<br>
-    ${decision.decision}
-  `;
-}
-
 function estimateShapeMatch(img1, img2) {
-  let match = 0;
-  const total = img1.data.length;
+  let match = 0, total = img1.data.length;
   for (let i = 0; i < total; i += 4) {
     const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
     const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
@@ -151,20 +146,16 @@ function estimateShapeMatch(img1, img2) {
 function compareHSVSimilarity(d1, d2) {
   function rgbToHsv(r, g, b) {
     r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h, s, v = max, d = max - min;
-    s = max === 0 ? 0 : d / max;
-    h = max === min ? 0 :
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    const v = max, s = max === 0 ? 0 : d / max;
+    let h = max === min ? 0 :
       max === r ? ((g - b) / d + (g < b ? 6 : 0)) :
       max === g ? ((b - r) / d + 2) :
       ((r - g) / d + 4);
     return [h / 6 * 360, s * 100, v * 100];
   }
 
-  let h1 = 0, s1 = 0, v1 = 0;
-  let h2 = 0, s2 = 0, v2 = 0;
-  const count = d1.length / 4;
-
+  let h1 = 0, s1 = 0, v1 = 0, h2 = 0, s2 = 0, v2 = 0;
   for (let i = 0; i < d1.length; i += 4) {
     const hsv1 = rgbToHsv(d1[i], d1[i+1], d1[i+2]);
     const hsv2 = rgbToHsv(d2[i], d2[i+1], d2[i+2]);
@@ -172,5 +163,11 @@ function compareHSVSimilarity(d1, d2) {
     h2 += hsv2[0]; s2 += hsv2[1]; v2 += hsv2[2];
   }
 
-  const diffH = Math.abs(h1/count - h2/count) / 360 * 40;
-  const diffS = Math.abs(s1/count - s2/count) / 100 * [43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/AlexUlianets/WH_project/tree/8c4c3575f69f17ab853e50604568cac5736dcfe4/src%2Fapp%2Fservices%2Fhsl.color.service.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")
+  const diffH = Math.abs(h1 - h2) / (d1.length / 4) / 360 * 40;
+  const diffS = Math.abs(s1 - s2) / (d1.length / 4) / 100 * 30;
+  const diffV = Math.abs(v1 - v2) / (d1.length / 4) / 100 * 30;
+  return Math.max(0, 100 - (diffH + diffS + diffV));
+}
+
+function getScientificDecision(color, texture, threshold = 85) {
+  const score = (color + texture) /
