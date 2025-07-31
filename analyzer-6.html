@@ -2,32 +2,31 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Shape Matcher</title>
+  <title>تحليل الشكلين الأكثر تشابهًا</title>
   <script src="https://docs.opencv.org/4.5.2/opencv.js" type="text/javascript"></script>
   <style>
-    canvas { border: 1px solid #ccc; margin-top: 10px; }
+    body { font-family: sans-serif; text-align: center; padding: 20px; }
+    canvas { border: 1px solid #aaa; margin-top: 10px; }
+    #analyzeBtn { margin-top: 15px; padding: 10px 20px; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h3>🔍 اختر صورة لاكتشاف الشكلين الأكثر تشابهًا</h3>
-  <input type="file" id="imgInput" accept="image/*">
-  <canvas id="canvasOutput"></canvas>
+  <h2>📐 تحليل تشابه شكلين هندسيين</h2>
+
+  <input type="file" id="imgInput" accept="image/*"><br>
+  <canvas id="canvasOutput"></canvas><br>
+  <button id="analyzeBtn">🔍 تحليل الصورة</button>
 
   <script type="text/javascript">
     let ready = false;
+    let loadedImage = null;
 
-    // تأكيد تحميل OpenCV بالكامل
     cv['onRuntimeInitialized'] = () => {
       ready = true;
-      console.log('OpenCV جاهز ✅');
+      console.log('📦 OpenCV تم تحميله بنجاح');
     };
 
     document.getElementById('imgInput').addEventListener('change', function (e) {
-      if (!ready) {
-        alert("OpenCV.js لم يتم تحميله بعد، الرجاء الانتظار ثانية.");
-        return;
-      }
-
       let img = new Image();
       img.src = URL.createObjectURL(e.target.files[0]);
       img.onload = function () {
@@ -36,37 +35,49 @@
         canvas.height = img.height;
         let ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
+        loadedImage = img;
+      };
+    });
 
-        let src = cv.imread(canvas);
-        let gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        let edges = new cv.Mat();
-        cv.Canny(gray, edges, 50, 150);
+    document.getElementById('analyzeBtn').addEventListener('click', function () {
+      if (!ready) {
+        alert("⏳ OpenCV.js لم يتم تحميله بعد.");
+        return;
+      }
+      if (!loadedImage) {
+        alert("📁 الرجاء اختيار صورة أولاً.");
+        return;
+      }
 
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      let canvas = document.getElementById('canvasOutput');
+      let src = cv.imread(canvas);
+      let gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      let edges = new cv.Mat();
+      cv.Canny(gray, edges, 50, 150);
 
-        let bestScore = Infinity;
-        let bestPair = [null, null];
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
+      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-        for (let i = 0; i < contours.size(); i++) {
-          for (let j = i + 1; j < contours.size(); j++) {
-            let score = cv.matchShapes(contours.get(i), contours.get(j), cv.CONTOURS_MATCH_I1, 0);
-            if (score < bestScore) {
-              bestScore = score;
-              bestPair = [i, j];
-            }
+      let bestScore = Infinity;
+      let bestPair = [null, null];
+      for (let i = 0; i < contours.size(); i++) {
+        for (let j = i + 1; j < contours.size(); j++) {
+          let score = cv.matchShapes(contours.get(i), contours.get(j), cv.CONTOURS_MATCH_I1, 0);
+          if (score < bestScore) {
+            bestScore = score;
+            bestPair = [i, j];
           }
         }
+      }
 
-        let color = new cv.Scalar(255, 0, 0, 255);
-        cv.drawContours(src, contours, bestPair[0], color, 3);
-        cv.drawContours(src, contours, bestPair[1], color, 3);
-        cv.imshow('canvasOutput', src);
+      let color = new cv.Scalar(255, 0, 0, 255);
+      cv.drawContours(src, contours, bestPair[0], color, 3);
+      cv.drawContours(src, contours, bestPair[1], color, 3);
+      cv.imshow('canvasOutput', src);
 
-        src.delete(); gray.delete(); edges.delete(); contours.delete(); hierarchy.delete();
-      };
+      src.delete(); gray.delete(); edges.delete(); contours.delete(); hierarchy.delete();
     });
   </script>
 </body>
