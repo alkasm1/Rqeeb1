@@ -2,11 +2,10 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
-  <title>analyzer-smart</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Visual Dual Check</title>
   <style>
     body {
-      background: #111;
+      background: #0b0b0b;
       color: #ff8800;
       font-family: 'Cairo', sans-serif;
       text-align: center;
@@ -14,171 +13,178 @@
     }
     video {
       width: 100%;
-      max-width: 400px;
+      max-width: 500px;
       border: 2px solid #ff8800;
-      border-radius: 10px;
       margin-bottom: 10px;
     }
-    canvas { display: none; }
-    .preview-container {
-      display: flex;
-      justify-content: center;
-      gap: 1rem;
-      margin: 1rem 0;
+    .container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      margin: auto;
     }
-    .preview-container canvas {
-      border: 2px solid #00ffcc;
-      border-radius: 6px;
+    .box {
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      border: 2px solid;
     }
+    .left { top: 50px; left: 10px; border-color: #0f0; }
+    .right { top: 50px; right: 10px; border-color: #f00; }
     button {
       margin: 1rem;
-      padding: 0.8rem 1.2rem;
+      padding: 0.8rem;
+      font-size: 1rem;
+      border-radius: 8px;
       background: #ff8800;
       color: white;
       border: none;
-      border-radius: 8px;
-      font-size: 1rem;
       cursor: pointer;
     }
-    #results {
-      margin-top: 1rem;
-      color: #ccc;
-      font-size: 1rem;
-      white-space: pre-line;
-    }
+    canvas { display: none; }
+    #results { margin-top: 1rem; font-size: 1rem; color: #ccc; }
+    #confirmBtn { display: none; }
   </style>
 </head>
 <body>
-
-  <h2>🧠 analyzer-smart: تحليل رسومي تلقائي مباشر</h2>
-  <video id="video" autoplay muted playsinline></video>
-  <canvas id="canvas"></canvas>
-
-  <div class="preview-container">
-    <canvas id="preview1" width="100" height="100"></canvas>
-    <canvas id="preview2" width="100" height="100"></canvas>
+  <h2>🧠 التحقق البصري المزدوج للمستندين</h2>
+  <div class="container">
+    <video id="video" autoplay playsinline></video>
+    <div class="box left"></div>
+    <div class="box right"></div>
   </div>
-
-  <button onclick="runAnalyzer()">🔍 تحليل الشكلين الأكثر وضوحًا</button>
+  <button onclick="analyze()">🔍 تحليل الشكل والمحتوى</button>
+  <button id="confirmBtn" onclick="confirmMatch()">✅ تحقق فعلي</button>
+  <canvas id="canvas"></canvas>
   <div id="results"></div>
 
-  <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-    const ctx1 = document.getElementById("preview1").getContext("2d");
-    const ctx2 = document.getElementById("preview2").getContext("2d");
+<script>
+// تعريف العناصر
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-      .then(stream => video.srcObject = stream)
-      .catch(err => alert("🚫 تعذر الوصول للكاميرا: " + err.message));
+// ✅ تشغيل الكاميرا تلقائيًا عند فتح الصفحة
+window.addEventListener("load", () => {
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+    .then(stream => video.srcObject = stream)
+    .catch(err => alert("🚫 فشل تشغيل الكاميرا"));
+});
 
-    function runAnalyzer() {
-      if (video.readyState < 2) {
-        alert("📷 الكاميرا ليست جاهزة بعد");
-        return;
+// 🔍 تحليل الشكل والمحتوى عند الضغط
+function analyze() {
+  if (video.readyState < 2) return alert("📷 الكاميرا غير جاهزة بعد");
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const boxW = 220, boxH = 220;
+  const left = ctx.getImageData(10, 50, boxW, boxH);
+  const right = ctx.getImageData(canvas.width - boxW - 10, 50, boxW, boxH);
+
+  const shapeScore = estimateShapeMatch(left, right);
+  if (shapeScore < 50) {
+    document.getElementById("confirmBtn").style.display = "none";
+    return document.getElementById("results").innerHTML =
+      `📐 نسبة تطابق الشكل الهندسي: ${shapeScore.toFixed(1)}% ❌ أقل من الحد الأدنى (50%)`;
+  }
+
+  const colorScore = compareHSVSimilarity(left.data, right.data);
+  const texture1 = analyzeTexture(left);
+  const texture2 = analyzeTexture(right);
+  const diffAvg = Math.abs(texture1.avg - texture2.avg);
+  const diffDev = Math.abs(texture1.dev - texture2.dev);
+  const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
+
+  const decision = getScientificDecision(colorScore, textureScore);
+
+  let resultText = `
+    📐 نسبة الشكل الهندسي (تم تجاوزها): ${shapeScore.toFixed(1)}% ✅<br>
+    🎨 نسبة تشابه اللون (HSV): ${colorScore.toFixed(1)}%<br>
+    🧵 نسبة النسيج: ${textureScore.toFixed(1)}%<br><br>
+    🧠 القرار النهائي (دون الشكل): ${decision.finalScore}%<br>
+    ${decision.decision}
+  `;
+
+  document.getElementById("results").innerHTML = resultText;
+  document.getElementById("confirmBtn").style.display = "inline-block";
+}
+
+// مقارنة اللون بتقنية HSV
+function compareHSVSimilarity(data1, data2) {
+  function rgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+    const d = max - min;
+    s = max === 0 ? 0 : d / max;
+    if (max === min) h = 0;
+    else {
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
       }
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const fullImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const { shape1, shape2, shapeScore } = extractSimilarShapes(fullImage);
-
-      if (!shape1 || !shape2) {
-        document.getElementById("results").innerText = "⚠️ لم يتم العثور على شكلين هندسيين واضحين في الصورة.";
-        return;
-      }
-
-      ctx1.putImageData(shape1, 0, 0);
-      ctx2.putImageData(shape2, 0, 0);
-
-      const colorScore = compareHSVSimilarity(shape1.data, shape2.data);
-      const texture1 = analyzeTexture(shape1);
-      const texture2 = analyzeTexture(shape2);
-      const diffAvg = Math.abs(texture1.avg - texture2.avg);
-      const diffDev = Math.abs(texture1.dev - texture2.dev);
-      const textureScore = 100 - Math.min((diffAvg + diffDev) / 2, 100);
-      const final = getScientificDecision(colorScore, textureScore);
-
-      document.getElementById("results").innerHTML = `
-📐 نسبة تشابه الشكل: ${shapeScore.toFixed(1)}%
-🎨 تشابه اللون: ${colorScore.toFixed(1)}%
-🧵 تشابه النسيج: ${textureScore.toFixed(1)}%
-📊 القرار النهائي: ${final.finalScore}%  
-${final.decision}
-      `;
+      h /= 6;
     }
+    return [h * 360, s * 100, v * 100];
+  }
 
-    function extractSimilarShapes(image) {
-      const { width, height } = image;
-      const candidates = [];
-      for (let y = 0; y < height - 100; y += 20) {
-        for (let x = 0; x < width - 100; x += 20) {
-          const shape = ctx.getImageData(x, y, 100, 100);
-          const edgeDensity = estimateEdgeDensity(shape);
-          if (edgeDensity > 10) {
-            candidates.push({ x, y, edgeDensity, shape });
-          }
-        }
-      }
-      candidates.sort((a, b) => b.edgeDensity - a.edgeDensity);
-      if (candidates.length < 2) return { shape1: null, shape2: null, shapeScore: 0 };
-      const shape1 = candidates[0].shape;
-      const shape2 = candidates[1].shape;
-      const shapeScore = estimateShapeMatch(shape1, shape2);
-      return { shape1, shape2, shapeScore };
-    }
+  let totalH1 = 0, totalS1 = 0, totalV1 = 0;
+  let totalH2 = 0, totalS2 = 0, totalV2 = 0;
+  const pixels = data1.length / 4;
 
-    function estimateEdgeDensity(imgData) {
-      const data = imgData.data;
-      let total = 0;
-      for (let i = 4; i < data.length - 4; i += 4) {
-        const diff =
-          Math.abs(data[i] - data[i - 4]) +
-          Math.abs(data[i + 1] - data[i - 3]) +
-          Math.abs(data[i + 2] - data[i - 2]);
-        if (diff > 50) total++;
-      }
-      return total / (data.length / 4) * 100;
-    }
+  for (let i = 0; i < data1.length; i += 4) {
+    const [h1, s1, v1] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
+    const [h2, s2, v2] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
+    totalH1 += h1; totalS1 += s1; totalV1 += v1;
+    totalH2 += h2; totalS2 += s2; totalV2 += v2;
+  }
 
-    function estimateShapeMatch(img1, img2) {
-      let matched = 0;
-      const pixels = img1.data.length / 4;
-      for (let i = 0; i < img1.data.length; i += 4) {
-        const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
-        const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
-        if (Math.abs(g1 - g2) < 30) matched++;
-      }
-      return matched / pixels * 100;
-    }
+  const avgH1 = totalH1 / pixels, avgS1 = totalS1 / pixels, avgV1 = totalV1 / pixels;
+  const avgH2 = totalH2 / pixels, avgS2 = totalS2 / pixels, avgV2 = totalV2 / pixels;
 
-    function compareHSVSimilarity(data1, data2) {
-      function rgbToHsv(r, g, b) {
-        r /= 255; g /= 255; b /= 255;
-        const max = Math.max(r, g, b), min = Math.min(r, g, b);
-        let h, s, v = max, d = max - min;
-        s = max === 0 ? 0 : d / max;
-        h = max === min ? 0 :
-            max === r ? (g - b) / d + (g < b ? 6 : 0) :
-            max === g ? (b - r) / d + 2 :
-                        (r - g) / d + 4;
-        h /= 6;
-        return [h * 360, s * 100, v * 100];
-      }
+  const diffH = Math.abs(avgH1 - avgH2) / 360 * 40;
+  const diffS = Math.abs(avgS1 - avgS2) / 100 * 30;
+  const diffV = Math.abs(avgV1 - avgV2) / 100 * 30;
+  return Math.max(0, 100 - (diffH + diffS + diffV));
+}
 
-      let totalH1 = 0, totalS1 = 0, totalV1 = 0;
-      let totalH2 = 0, totalS2 = 0, totalV2 = 0;
-      const pixels = data1.length / 4;
+// تحليل النسيج
+function analyzeTexture(imageData) {
+  const data = imageData.data;
+  let sum = 0;
+  const values = [];
+  for (let i = 0; i < data.length; i += 4) {
+    const g = (data[i] + data[i+1] + data[i+2]) / 3;
+    values.push(g);
+    sum += g;
+  }
+  const avg = sum / values.length;
+  const dev = Math.sqrt(values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length);
+  return { avg, dev };
+}
 
-      for (let i = 0; i < data1.length; i += 4) {
-        const [h1, s1, v1] = rgbToHsv(data1[i], data1[i+1], data1[i+2]);
-        const [h2, s2, v2] = rgbToHsv(data2[i], data2[i+1], data2[i+2]);
-        totalH1 += h1; totalS1 += s1; totalV1 += v1;
-        totalH2 += h2; totalS2 += s2; totalV2 += v2;
-      }
+// تقدير تطابق الشكل الهندسي
+function estimateShapeMatch(img1, img2) {
+  let matched = 0;
+  const pixels = img1.data.length / 4;
+  for (let i = 0; i < img1.data.length; i += 4) {
+    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
+    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
+    if (Math.abs(g1 - g2) < 30) matched++;
+  }
+  return matched / pixels * 100;
+}
 
-      const avgH1 = totalH1 / pixels, avgS1 = totalS1 / pixels, avgV1 = totalV1 / pixels;
-      const avgH2 = totalH2 / pixels,[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/AlexUlianets/WH_project/tree/8c4c3575f69f17ab853e50604568cac5736dcfe4/src%2Fapp%2Fservices%2Fhsl.color.service.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")
+// اتخاذ قرار علمي بناءً على النتيجة
+function getScientificDecision(color, texture, threshold = 85) {
+  const score = (color + texture) / 2;
+  const verdict = score >= threshold ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
+  return { finalScore: score.toFixed(1), decision: verdict };
+}
+
+// تأكيد المطابقة
+function confirmMatch() {
+  alert("🛡[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/AlexUlianets/WH_project/tree/8c4c3575f69f17ab853e50604568cac5736dcfe4/src%2Fapp%2Fservices%2Fhsl.color.service.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/SEUNAKINTOLA/Mini-unsplash-clone/tree/f49b3e19b20c63678f336cb03775a08b5324b7da/Mini%20unsplash%20clone%2FClientApp%2Fsrc%2Fapp%2Fshared%2Fcommon%2Futil.ts?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "2")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/riophae/what-color-is-it/tree/7e8a17f73bb33af3b10bc3b2b95a2f30b5d6b42b/colz.class.min.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "3")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/HelKyle/antd-multi-cascader/tree/f7217a51ae8b86f3f7838e0d726bc90acd6394f2/docs%2Fvendors~main.f9a871f0.iframe.bundle.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "4")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/venuswku/elkhorn-slough/tree/73f2014094cf17f1ef6dba8088b99116da5e9e98/wp-includes%2Fjs%2Fdist%2Fblocks.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "5")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/galaxykate/GenerativeMethodsClass/tree/2b4d19eed4cb4f0d7a47d2aea6ea38d229330460/classweb%2Fstudents-21W%2FSahibzadaMayed%2Fa4%2Flightmap.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "6")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/ssanso11/ConvertASL/tree/f632c7d98e66b0bba001b0f8d6dec02d225bfdad/casl-front%2Fsrc%2Fhelpers%2Frgb_to_hsv.js?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "7")
