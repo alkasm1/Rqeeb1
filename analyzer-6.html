@@ -1,102 +1,64 @@
-<!DOCTYPE html>
-<html lang="ar">
-<head>
-  <meta charset="UTF-8">
-  <title>تحليل الشكلين</title>
-  <style>
-    #shapePreview {
-      display: flex;
-      gap: 20px;
-      margin-top: 20px;
+<!-- واجهة المستخدم -->
+<canvas id="imageCanvas"></canvas>
+<br>
+<button onclick="previewShapes()">👁️ معاينة الأشكال الهندسية</button>
+<button onclick="analyzeImage()">🧠 تحليل الصورة</button>
+
+<script type="text/javascript">
+function previewShapes() {
+  let src = cv.imread('imageCanvas');
+  let gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+  cv.findContours(gray, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  let imageArea = src.cols * src.rows;
+  let preview = src.clone();
+
+  for (let i = 0; i < contours.size(); i++) {
+    let cnt = contours.get(i);
+    let area = cv.contourArea(cnt);
+
+    if (area >= imageArea * 0.4) {
+      let color = new cv.Scalar(255, 0, 0, 255); // أحمر
+      cv.drawContours(preview, contours, i, color, 2, cv.LINE_8, hierarchy, 0);
     }
-    canvas {
-      border: 1px solid #444;
+  }
+
+  cv.imshow('imageCanvas', preview);
+  gray.delete(); hierarchy.delete(); contours.delete(); preview.delete();
+}
+
+function analyzeImage() {
+  let src = cv.imread('imageCanvas');
+  let gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+  cv.findContours(gray, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  let imageArea = src.cols * src.rows;
+  let validShapes = [];
+
+  for (let i = 0; i < contours.size(); i++) {
+    let cnt = contours.get(i);
+    let area = cv.contourArea(cnt);
+
+    if (area >= imageArea * 0.4) {
+      validShapes.push({ contour: cnt, area });
     }
-  </style>
-</head>
-<body>
-  <h2>اختر صورة تحتوي على أشكال هندسية</h2>
-  <input type="file" id="uploadImage">
-  <br><br>
-  <canvas id="mainCanvas" width="640" height="480"></canvas>
+  }
 
-  <div id="shapePreview">
-    <canvas id="shape1Canvas" width="200" height="200"></canvas>
-    <canvas id="shape2Canvas" width="200" height="200"></canvas>
-  </div>
+  if (validShapes.length < 2) {
+    alert("⚠️ لم يتم العثور على شكلين يتجاوزان 40٪ من حجم الصورة!");
+    return;
+  }
 
-  <br>
-  <button id="analyzeBtn">مقارنة وتحليل</button>
+  compareShapes(validShapes[0].contour, validShapes[1].contour);
 
-  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
-
-  <script>
-    let mainCanvas = document.getElementById("mainCanvas");
-    let ctx = mainCanvas.getContext("2d");
-
-    function onOpenCvReady() {
-      document.getElementById("uploadImage").addEventListener("change", (e) => {
-        let file = e.target.files[0];
-        let img = new Image();
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0, mainCanvas.width, mainCanvas.height);
-        };
-        img.src = URL.createObjectURL(file);
-      });
-
-      document.getElementById("analyzeBtn").addEventListener("click", () => {
-        let src = cv.imread(mainCanvas);
-        let gray = new cv.Mat();
-        let blurred = new cv.Mat();
-        let edged = new cv.Mat();
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-        cv.Canny(blurred, edged, 75, 200);
-        cv.findContours(edged, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-        let shapes = [];
-        for (let i = 0; i < contours.size(); i++) {
-          let cnt = contours.get(i);
-          let area = cv.contourArea(cnt);
-          if (area > 100) {
-            shapes.push({ contour: cnt, area });
-          }
-        }
-
-        shapes.sort((a, b) => b.area - a.area);
-        if (shapes.length < 2) {
-          alert("لم يتم العثور على شكلين واضحين في الصورة!");
-          return;
-        }
-
-        let contour1 = shapes[0].contour;
-        let contour2 = shapes[1].contour;
-
-        // عرض الشكلين في canvases مستقلة
-        drawContourToCanvas(contour1, "shape1Canvas", src.size());
-        drawContourToCanvas(contour2, "shape2Canvas", src.size());
-
-        // تحليل التشابه
-        let similarity = cv.matchShapes(contour1, contour2, cv.CONTOURS_MATCH_I1, 0);
-        alert("درجة التشابه بين الشكلين: " + similarity.toFixed(3));
-
-        // تنظيف الذاكرة
-        src.delete(); gray.delete(); blurred.delete(); edged.delete();
-        contours.delete(); hierarchy.delete(); contour1.delete(); contour2.delete();
-      });
-    }
-
-    function drawContourToCanvas(contour, canvasId, size) {
-      let dst = new cv.Mat.zeros(size.height, size.width, cv.CV_8UC3);
-      let contourVector = new cv.MatVector();
-      contourVector.push_back(contour);
-      cv.drawContours(dst, contourVector, 0, new cv.Scalar(0, 255, 0), 2);
-      cv.imshow(canvasId, dst);
-      dst.delete(); contourVector.delete();
-    }
-  </script>
-</body>
-</html>
+  gray.delete(); hierarchy.delete(); contours.delete();
+}
+</script>
