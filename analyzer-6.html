@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>كشف المستندات المزورة</title>
+  <title>كشف المستندات والعملات المزورة</title>
   <style>
     body {
       background: #0b0b0b;
@@ -12,23 +12,17 @@
       padding: 1rem;
     }
     img {
-      width: 100%;
       max-width: 500px;
+      width: 100%;
       border: 2px solid #ff8800;
       margin-bottom: 10px;
-      display: block;
-      margin-left: auto;
-      margin-right: auto;
     }
-    input[type="file"] {
-      margin: 1rem auto;
-      color: #ccc;
-    }
-    button {
-      margin: 0.5rem;
-      padding: 0.8rem;
+    input[type="file"], button {
+      margin: 0.5rem auto;
+      padding: 0.8rem 1rem;
       font-size: 1rem;
       border-radius: 8px;
+      display: block;
       background: #ff8800;
       color: white;
       border: none;
@@ -45,14 +39,12 @@
 </head>
 <body>
 
-  <h2>🧠 تحليل ذكي للمستندات عبر صورة</h2>
-  <input type="file" accept="image/*" onchange="handleUpload(this)">
-  <img id="preview" />
+  <h2>🧠 كشف ذكي للمستندات والعملات</h2>
+  <input type="file" accept="image/*" onchange="uploadImage(this)">
+  <img id="preview">
   <canvas id="canvas"></canvas>
-
-  <button onclick="autoDetect()">📍 اختيار تلقائي للمناطق المتشابهة</button>
-  <button onclick="deepAnalyze()">🧪 التحليل العلمي</button>
-
+  <button onclick="autoDetect()">🔍 اختيار تلقائي لأكثر منطقتين تشابهًا</button>
+  <button onclick="deepAnalyze()">🧪 التحليل العلمي للتزوير</button>
   <div id="results"></div>
 
 <script>
@@ -61,7 +53,7 @@ const preview = document.getElementById("preview");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-function handleUpload(input) {
+function uploadImage(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -71,7 +63,8 @@ function handleUpload(input) {
       canvas.width = preview.width;
       canvas.height = preview.height;
       ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
-      document.getElementById("results").innerText = "📷 تم تحميل الصورة بنجاح.";
+      selectedZones = [];
+      document.getElementById("results").innerText = "✅ تم تحميل الصورة بنجاح.";
     };
   };
   reader.readAsDataURL(file);
@@ -85,7 +78,7 @@ function autoDetect() {
   for (let y = 0; y < canvas.height - zoneSize; y += step) {
     for (let x = 0; x < canvas.width - zoneSize; x += step) {
       const data = ctx.getImageData(x, y, zoneSize, zoneSize);
-      const brightness = getBrightness(data);
+      const brightness = averageBrightness(data);
       zones.push({ x, y, data, brightness });
     }
   }
@@ -93,48 +86,48 @@ function autoDetect() {
   let best = { score: 0, a: null, b: null };
   for (let i = 0; i < zones.length; i++) {
     for (let j = i + 1; j < zones.length; j++) {
-      const score = matchScore(zones[i], zones[j]);
+      const score = compareZones(zones[i], zones[j]);
       if (score > best.score) best = { score, a: zones[i], b: zones[j] };
     }
   }
 
   selectedZones = [best.a.data, best.b.data];
   document.getElementById("results").innerText =
-    `✅ تم اختيار منطقتين بنسبة تشابه: ${best.score.toFixed(1)}%`;
+    `📍 تم تحديد منطقتين بنسبة تشابه: ${best.score.toFixed(1)}%`;
 }
 
 function deepAnalyze() {
   if (selectedZones.length !== 2)
-    return alert("⚠️ لم يتم اختيار مناطق التحليل.");
+    return alert("❌ يجب اختيار مناطق للتحليل أولًا.");
 
-  const [left, right] = selectedZones;
-  const shapeScore = shapeMatch(left, right);
-  const colorScore = colorMatch(left.data, right.data);
-  const t1 = texture(left), t2 = texture(right);
+  const [a, b] = selectedZones;
+  const shapeScore = shapeMatch(a, b);
+  const colorScore = colorMatch(a.data, b.data);
+  const t1 = texture(a), t2 = texture(b);
   const textureScore = 100 - Math.min(Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev), 100);
   const finalScore = ((colorScore + textureScore) / 2).toFixed(1);
-  const verdict = finalScore >= 85 ? "✅ تطابق علمي موثوق" : "⚠️ محتمل وجود تزوير";
+  const verdict = finalScore >= 85 ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
 
-  document.getElementById("results").innerHTML = `
-📐 الشكل الهندسي: ${shapeScore.toFixed(1)}%
-🎨 اللون (HSV): ${colorScore.toFixed(1)}%
-🧵 النسيج: ${textureScore.toFixed(1)}%
+  document.getElementById("results").innerText = `
+📐 التشابه الهندسي: ${shapeScore.toFixed(1)}%
+🎨 تشابه الألوان: ${colorScore.toFixed(1)}%
+🧵 تطابق النسيج: ${textureScore.toFixed(1)}%
 🧠 القرار النهائي: ${finalScore}%  
 ${verdict}
   `;
 }
 
-function getBrightness(data) {
-  let sum = 0, pixels = data.data;
-  for (let i = 0; i < pixels.length; i += 4)
-    sum += (pixels[i] + pixels[i+1] + pixels[i+2]) / 3;
-  return sum / (pixels.length / 4);
+function averageBrightness(data) {
+  let sum = 0;
+  for (let i = 0; i < data.data.length; i += 4)
+    sum += (data.data[i] + data.data[i+1] + data.data[i+2]) / 3;
+  return sum / (data.data.length / 4);
 }
 
-function matchScore(z1, z2) {
+function compareZones(z1, z2) {
   const bDiff = Math.abs(z1.brightness - z2.brightness);
   const t1 = texture(z1.data), t2 = texture(z2.data);
-  return Math.max(0, 100 - (Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev) + bDiff) / 3);
+  return 100 - (Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev) + bDiff) / 3;
 }
 
 function texture(data) {
@@ -147,13 +140,13 @@ function texture(data) {
 }
 
 function shapeMatch(img1, img2) {
-  let matched = 0;
+  let match = 0;
   for (let i = 0; i < img1.data.length; i += 4) {
     const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
     const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
-    if (Math.abs(g1 - g2) < 30) matched++;
+    if (Math.abs(g1 - g2) < 30) match++;
   }
-  return matched / (img1.data.length / 4) * 100;
+  return match / (img1.data.length / 4) * 100;
 }
 
 function colorMatch(d1, d2) {
@@ -170,12 +163,17 @@ function colorMatch(d1, d2) {
 
   let h1=0,s1=0,v1=0,h2=0,s2=0,v2=0;
   for (let i = 0; i < d1.length; i += 4) {
-    const [a1,b1,c1] = rgbToHsv(d1[i], d1[i+1], d1[i+2]);
-    const [a2,b2,c2] = rgbToHsv(d2[i], d2[i+1], d2[i+2]);
-    h1+=a1; s1+=b1; v1+=c1; h2+=a2; s2+=b2; v2+=c2;
+    const [a1,b1,c1] = rgbToHsv(d1[i],d1[i+1],d1[i+2]);
+    const [a2,b2,c2] = rgbToHsv(d2[i],d2[i+1],d2[i+2]);
+    h1+=a1; s1+=b1; v1+=c1;
+    h2+=a2; s2+=b2; v2+=c2;
   }
-
   const n = d1.length / 4;
   const diffH = Math.abs(h1/n - h2/n) / 360 * 40;
   const diffS = Math.abs(s1/n - s2/n) / 100 * 30;
   const diffV = Math.abs(v1/n - v2/n) / 100 * 30;
+  return Math.max(0, 100 - (diffH + diffS + diffV));
+}
+</script>
+</body>
+</html>
