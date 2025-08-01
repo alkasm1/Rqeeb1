@@ -1,174 +1,151 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
-  <meta charset="UTF-8">
-  <title>كشف المستندات والعملات المزورة</title>
+  <meta charset="UTF-8" />
+  <title>RQEEB | كشف التزوير داخل صورة واحدة</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    body {
-      background: #0b0b0b;
-      color: #ff8800;
-      font-family: 'Cairo', sans-serif;
-      text-align: center;
-      padding: 1rem;
-    }
-    img, canvas.preview {
-      max-width: 500px;
-      width: 100%;
-      border: 2px solid #ff8800;
-      margin-bottom: 10px;
-    }
-    input[type="file"], button {
-      margin: 0.5rem auto;
-      padding: 0.8rem 1rem;
-      font-size: 1rem;
-      border-radius: 8px;
-      display: block;
-      background: #ff8800;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    #results {
-      margin-top: 1rem;
-      font-size: 1rem;
-      color: #ccc;
-      white-space: pre-line;
-    }
-    .region-container {
-      display: flex;
-      justify-content: center;
-      gap: 1rem;
-      margin-top: 1rem;
-    }
-    canvas { display: none; }
+    body { background:#111; color:#ffa500; font-family:'Tajawal',sans-serif; text-align:center; padding:2rem; }
+    .card { background:#1e1e1e; padding:1rem; margin:1rem auto; border-radius:12px; max-width:480px; box-shadow:0 0 10px #000; }
+    input[type="file"], button { width:100%; padding:0.8rem; margin-top:10px; font-size:1rem; border-radius:8px; border:none; }
+    button { background:#ffa500; color:#000; cursor:pointer; }
+    button:hover { background:#e69500; }
+    #results { margin-top:20px; font-size:1.1rem; text-align:right; color:#fff; }
+    progress { width:100%; margin-top:10px; }
+    footer { margin-top:30px; font-size:0.9em; color:#777; }
   </style>
 </head>
 <body>
 
-  <h2>🧠 كشف ذكي للمستندات والعملات</h2>
-  <input type="file" accept="image/*" onchange="uploadImage(this)">
-  <img id="preview">
-  <canvas id="canvas"></canvas>
-  <button onclick="autoDetect()">🔍 اختيار تلقائي لأكثر منطقتين كبيرة ومتشابهة</button>
-  <button onclick="deepAnalyze()">🧪 التحليل العلمي للتزوير</button>
+  <h1>🔬 RQEEB — تحليل مستندين داخل صورة واحدة</h1>
 
-  <div class="region-container">
-    <canvas class="preview" id="region1" width="200" height="200"></canvas>
-    <canvas class="preview" id="region2" width="200" height="200"></canvas>
+  <div class="card">
+    <h3>📁 رفع صورة تحتوي مستندين</h3>
+    <input type="file" accept="image/*" id="combinedFile">
+    <button onclick="startSingleImageAnalysis()">🧪 بدء التحليل الذكي</button>
+    <div id="results">👁️ بانتظار الصورة...</div>
+    <progress id="progressBar" value="0" max="100"></progress>
   </div>
 
-  <div id="results"></div>
+  <footer>م: رأفت عمر — RQEEB Project © 2025</footer>
 
 <script>
-let selectedZones = [], selectedCoords = [];
-const preview = document.getElementById("preview");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const r1 = document.getElementById("region1").getContext("2d");
-const r2 = document.getElementById("region2").getContext("2d");
-
-function uploadImage(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    preview.src = e.target.result;
-    preview.onload = () => {
-      canvas.width = preview.width;
-      canvas.height = preview.height;
-      ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
-      selectedZones = [];
-      document.getElementById("results").innerText = "✅ تم تحميل الصورة بنجاح.";
+function loadImage(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.src = reader.result;
+      img.onload = () => res(img);
+      img.onerror = rej;
     };
-  };
-  reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
+  });
 }
 
-function autoDetect() {
-  if (!preview.src) return alert("⚠️ لم يتم تحميل صورة بعد.");
-  ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
+function extractTwoRegions(img) {
+  const canvas1 = document.createElement("canvas");
+  const canvas2 = document.createElement("canvas");
+  const w = img.width, h = img.height;
+  const halfW = w / 2;
 
-  const minArea = canvas.width * canvas.height * 0.4;
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const regions = [
-    { x: 0, y: 0, w: canvas.width / 2, h: canvas.height },
-    { x: canvas.width / 2, y: 0, w: canvas.width / 2, h: canvas.height }
-  ];
+  // تحقق من أن كل نصف ≥ 40% من الصورة
+  const minArea = w * h * 0.4;
+  if ((halfW * h) < minArea) return null;
 
-  const valid = regions.filter(r => r.w * r.h >= minArea);
-  if (valid.length < 2) {
-    document.getElementById("results").innerText = "❌ لا توجد منطقتان بمساحة كافية.";
+  canvas1.width = halfW;
+  canvas1.height = h;
+  canvas1.getContext("2d").drawImage(img, 0, 0, halfW, h, 0, 0, halfW, h);
+
+  canvas2.width = halfW;
+  canvas2.height = h;
+  canvas2.getContext("2d").drawImage(img, halfW, 0, halfW, h, 0, 0, halfW, h);
+
+  return [canvas1, canvas2];
+}
+
+function analyzeSobel(canvas) {
+  const ctx = canvas.getContext("2d");
+  const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const gray = (d[i] + d[i+1] + d[i+2]) / 3;
+    sum += gray;
+  }
+  const avg = sum / (d.length / 4);
+  const dev = Math.sqrt(d.reduce((acc, val, i) => {
+    if (i % 4 === 0) {
+      const gray = (d[i] + d[i+1] + d[i+2]) / 3;
+      return acc + Math.pow(gray - avg, 2);
+    }
+    return acc;
+  }, 0) / (d.length / 4));
+  return { avg, dev };
+}
+
+function getDominantColor(canvas) {
+  const ctx = canvas.getContext("2d");
+  const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let r=0, g=0, b=0, count=0;
+  for (let i = 0; i < d.length; i += 4) {
+    r += d[i]; g += d[i+1]; b += d[i+2]; count++;
+  }
+  return {
+    r: Math.floor(r / count),
+    g: Math.floor(g / count),
+    b: Math.floor(b / count)
+  };
+}
+
+async function startSingleImageAnalysis() {
+  const file = document.getElementById('combinedFile').files[0];
+  const resultBox = document.getElementById("results");
+  const bar = document.getElementById("progressBar");
+
+  if (!file) {
+    resultBox.innerHTML = "⚠️ الرجاء رفع صورة تحتوي مستندين.";
     return;
   }
 
-  selectedCoords = valid;
-  selectedZones = valid.map(r => ctx.getImageData(r.x, r.y, r.w, r.h));
-  r1.clearRect(0, 0, 200, 200);
-  r2.clearRect(0, 0, 200, 200);
-  r1.drawImage(canvas, valid[0].x, valid[0].y, valid[0].w, valid[0].h, 0, 0, 200, 200);
-  r2.drawImage(canvas, valid[1].x, valid[1].y, valid[1].w, valid[1].h, 0, 0, 200, 200);
+  resultBox.innerHTML = "⏳ جاري التحليل...";
 
-  document.getElementById("results").innerText = "👀 تم عرض معاينة مستقلّة للمنطقتين.";
-}
+  try {
+    const img = await loadImage(file);
+    const regions = extractTwoRegions(img);
+    if (!regions) {
+      resultBox.innerHTML = "❌ الصورة لا تحتوي على منطقتين كبيرتين بما يكفي (≥ 40%).";
+      return;
+    }
 
-function deepAnalyze() {
-  if (selectedZones.length !== 2)
-    return alert("❌ يجب معاينة منطقتين أولًا.");
-  const [a, b] = selectedZones;
-  const shapeScore = shapeMatch(a, b);
-  const colorScore = colorMatch(a.data, b.data);
-  const t1 = texture(a), t2 = texture(b);
-  const textureScore = 100 - Math.min(Math.abs(t1.avg - t2.avg) + Math.abs(t1.dev - t2.dev), 100);
-  const finalScore = ((colorScore + textureScore) / 2).toFixed(1);
-  const verdict = finalScore >= 85 ? "✅ تطابق علمي مؤكد" : "⚠️ محتمل تزوير";
+    const [region1, region2] = regions;
 
-  document.getElementById("results").innerText = `
-📐 التشابه الهندسي: ${shapeScore.toFixed(1)}%
-🎨 تشابه الألوان: ${colorScore.toFixed(1)}%
-🧵 تطابق النسيج: ${textureScore.toFixed(1)}%
-🧠 القرار النهائي: ${finalScore}%  
-${verdict}
-  `;
-}
+    const texture1 = analyzeSobel(region1);
+    const texture2 = analyzeSobel(region2);
+    const textureDiff = Math.abs(texture1.avg - texture2.avg) + Math.abs(texture1.dev - texture2.dev);
 
-function shapeMatch(img1, img2) {
-  let match = 0;
-  for (let i = 0; i < img1.data.length; i += 4) {
-    const g1 = (img1.data[i] + img1.data[i+1] + img1.data[i+2]) / 3;
-    const g2 = (img2.data[i] + img2.data[i+1] + img2.data[i+2]) / 3;
-    if (Math.abs(g1 - g2) < 30) match++;
+    const color1 = getDominantColor(region1);
+    const color2 = getDominantColor(region2);
+    const colorMatch = Math.abs(color1.r - color2.r) + Math.abs(color1.g - color2.g) + Math.abs(color1.b - color2.b);
+
+    const score = 100 - Math.min((textureDiff + colorMatch/3), 100);
+    bar.value = score;
+
+    resultBox.innerHTML = `
+      <h3>📊 نتائج التحليل داخل الصورة:</h3>
+      <ul>
+        <li>🧵 تحليل النسيج: فرق ${textureDiff.toFixed(2)}</li>
+        <li>🎨 اللون السائد: فرق ${colorMatch.toFixed(1)}</li>
+        <li><strong>📈 درجة التطابق:</strong> ${score.toFixed(1)}%</li>
+      </ul>
+      ${score >= 90 ? "✅ تطابق تام — المستندان متشابهان." :
+        score >= 70 ? "⚠️ تطابق جزئي — تحقق يدوي موصى به." :
+        "❌ تطابق منخفض — تزوير محتمل."}
+    `;
+  } catch {
+    resultBox.innerHTML = "❌ فشل التحليل — تأكد من وضوح الصورة.";
   }
-  return match / (img1.data.length / 4) * 100;
 }
+</script>
 
-function colorMatch(d1, d2) {
-  let h1=0,s1=0,v1=0,h2=0,s2=0,v2=0;
-  for (let i = 0; i < d1.length; i += 4) {
-    const [a1,b1,c1] = rgbToHsv(d1[i],d1[i+1],d1[i+2]);
-    const [a2,b2,c2] = rgbToHsv(d2[i],d2[i+1],d2[i+2]);
-    h1+=a1; s1+=b1; v1+=c1;
-    h2+=a2; s2+=b2; v2+=c2;
-  }
-  const n = d1.length / 4;
-  const diffH = Math.abs(h1/n - h2/n) / 360 * 40;
-  const diffS = Math.abs(s1/n - s2/n) / 100 * 30;
-  const diffV = Math.abs(v1/n - v2/n) / 100 * 30;
-  return Math.max(0, 100 - (diffH + diffS + diffV));
-}
-
-function rgbToHsv(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const v = max, d = max - min, s = max === 0 ? 0 : d / max;
-  let h = max === min ? 0 :
-    max === r ? ((g - b) / d + (g < b ? 6 : 0)) :
-    max === g ? ((b - r) / d + 2) :
-                ((r - g) / d + 4);
-  return [h / 6 * 360, s * 100, v * 100];
-}
-
-function texture(data) {
-  const values = [];
-  for (let i = 0; i < data.data.length; i += 4)
-    values.push((data.data[i] + data.data[i+1] + data.data[i+2]) / 3);
-  const avg = values
+</body>
+</html>
