@@ -10,7 +10,7 @@
     input[type="file"], button { width:100%; padding:0.8rem; margin-top:10px; font-size:1rem; border-radius:8px; border:none; }
     button { background:#ffa500; color:#000; cursor:pointer; }
     button:hover { background:#e69500; }
-    #results { margin-top:20px; font-size:1.1rem; text-align:right; color:#fff; }
+    #results { margin-top:20px; font-size:1.1rem; text-align:right; color:#fff; background:#222; padding:1rem; border-radius:8px; }
     progress { width:100%; margin-top:10px; }
     footer { margin-top:30px; font-size:0.9em; color:#777; }
   </style>
@@ -43,53 +43,24 @@ function loadImage(file) {
   });
 }
 
-function extractSmartRegions(img) {
-  const canvas = document.createElement("canvas");
-  canvas.width = img.width;
-  canvas.height = img.height;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0);
+function extractTwoRegions(img) {
+  const canvas1 = document.createElement("canvas");
+  const canvas2 = document.createElement("canvas");
+  const w = img.width, h = img.height;
+  const halfW = w / 2;
 
-  const regions = [];
-  const step = 50;
-  const size = 200;
-  const minArea = img.width * img.height * 0.4;
+  const minArea = w * h * 0.4;
+  if ((halfW * h) < minArea) return null;
 
-  for (let y = 0; y < img.height - size; y += step) {
-    for (let x = 0; x < img.width - size; x += step) {
-      const regionCanvas = document.createElement("canvas");
-      regionCanvas.width = size;
-      regionCanvas.height = size;
-      regionCanvas.getContext("2d").drawImage(canvas, x, y, size, size, 0, 0, size, size);
-      regions.push({ x, y, canvas: regionCanvas });
-    }
-  }
+  canvas1.width = halfW;
+  canvas1.height = h;
+  canvas1.getContext("2d").drawImage(img, 0, 0, halfW, h, 0, 0, halfW, h);
 
-  let bestPair = null;
-  let bestScore = Infinity;
+  canvas2.width = halfW;
+  canvas2.height = h;
+  canvas2.getContext("2d").drawImage(img, halfW, 0, halfW, h, 0, 0, halfW, h);
 
-  for (let i = 0; i < regions.length; i++) {
-    for (let j = i + 1; j < regions.length; j++) {
-      const a = regions[i].canvas;
-      const b = regions[j].canvas;
-
-      const ta = analyzeSobel(a);
-      const tb = analyzeSobel(b);
-      const td = Math.abs(ta.avg - tb.avg) + Math.abs(ta.dev - tb.dev);
-
-      const ca = getDominantColor(a);
-      const cb = getDominantColor(b);
-      const cd = Math.abs(ca.r - cb.r) + Math.abs(ca.g - cb.g) + Math.abs(ca.b - cb.b);
-
-      const score = td + cd / 3;
-      if (score < bestScore) {
-        bestScore = score;
-        bestPair = [a, b];
-      }
-    }
-  }
-
-  return bestPair;
+  return [canvas1, canvas2];
 }
 
 function analyzeSobel(canvas) {
@@ -136,12 +107,13 @@ async function startSingleImageAnalysis() {
   }
 
   resultBox.innerHTML = "⏳ جاري التحليل...";
+  bar.value = 0;
 
   try {
     const img = await loadImage(file);
-    const regions = extractSmartRegions(img);
+    const regions = extractTwoRegions(img);
     if (!regions) {
-      resultBox.innerHTML = "❌ لم يتم العثور على مستندين متشابهين داخل الصورة.";
+      resultBox.innerHTML = "❌ الصورة لا تحتوي على منطقتين كبيرتين بما يكفي (≥ 40%).";
       return;
     }
 
@@ -155,8 +127,17 @@ async function startSingleImageAnalysis() {
     const color2 = getDominantColor(region2);
     const colorMatch = Math.abs(color1.r - color2.r) + Math.abs(color1.g - color2.g) + Math.abs(color1.b - color2.b);
 
-    const score = 100 - Math.min((textureDiff + colorMatch/3), 100);
+    const score = 100 - Math.min((textureDiff + colorMatch / 3), 100);
     bar.value = score;
+
+    let verdict = "";
+    if (score >= 90) {
+      verdict = "✅ تطابق تام — المستندان متشابهان.";
+    } else if (score >= 70) {
+      verdict = "⚠️ تطابق جزئي — تحقق يدوي موصى به.";
+    } else {
+      verdict = "❌ تطابق منخفض — تزوير محتمل.";
+    }
 
     resultBox.innerHTML = `
       <h3>📊 نتائج التحليل داخل الصورة:</h3>
@@ -165,12 +146,10 @@ async function startSingleImageAnalysis() {
         <li>🎨 اللون السائد: فرق ${colorMatch.toFixed(1)}</li>
         <li><strong>📈 درجة التطابق:</strong> ${score.toFixed(1)}%</li>
       </ul>
-      ${score >= 90 ? "✅ تطابق تام — المستندان متشابهان." :
-        score >= 70 ? "⚠️ تطابق جزئي — تحقق يدوي موصى به." :
-        "❌ تطابق منخفض — تزوير محتمل."}
+      <div style="margin-top:10px;">${verdict}</div>
     `;
-  } catch {
-    resultBox.innerHTML = "❌ فشل التحليل — تأكد من وضوح الصورة.";
+  } catch (err) {
+    resultBox.innerHTML = "❌ فشل التحليل — تأكد من وضوح الصورة أو نوع الملف.";
   }
 }
 </script>
