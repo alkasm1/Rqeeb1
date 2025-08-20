@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رقيب المطور - منصة التحقق البصري المتقدمة</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                        secondary: '#7C3AED',
+                        accent: '#10B981'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .selection-box {
+            border: 2px solid #5D5CDE;
+            background: rgba(93, 92, 222, 0.1);
+            position: absolute;
+            cursor: move;
+        }
+        .resize-handle {
+            width: 8px;
+            height: 8px;
+            background: #5D5CDE;
+            position: absolute;
+            cursor: nw-resize;
+        }
+        .canvas-container {
+            position: relative;
+            display: inline-block;
+            border: 2px dashed #e5e7eb;
+            transition: border-color 0.3s;
+        }
+        .canvas-container:hover {
+            border-color: #5D5CDE;
+        }
+        .analysis-result {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loading-dots::after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+    <!-- Dark Mode Detection -->
+    <script>
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+    </script>
+
+    <!-- Header -->
+    <header class="bg-white dark:bg-gray-800 shadow-lg border-b border-gray-200 dark:border-gray-700">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4 space-x-reverse">
+                    <div class="text-3xl">📷</div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-primary">رقيب المطور</h1>
+                        <p class="text-gray-600 dark:text-gray-400">منصة التحقق البصري المتقدمة للمستندات والعملات</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2 space-x-reverse text-sm text-gray-500 dark:text-gray-400">
+                    <span>🔬</span>
+                    <span>تحليل متقدم</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- Upload Section -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-xl font-bold mb-6 flex items-center">
+                <span class="ml-2">📤</span>
+                رفع الصور للمقارنة
+            </h2>
+            
+            <!-- Upload Mode Selection -->
+            <div class="mb-6">
+                <div class="flex flex-wrap gap-4">
+                    <label class="flex items-center">
+                        <input type="radio" name="uploadMode" value="single" checked class="ml-2">
+                        <span>صورة واحدة تحتوي على مستندين</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="radio" name="uploadMode" value="dual" class="ml-2">
+                        <span>صورتين منفصلتين</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Single Image Upload -->
+            <div id="singleUpload" class="grid gap-6">
+                <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-primary transition-colors">
+                    <input type="file" id="singleImageInput" accept="image/*" class="hidden">
+                    <label for="singleImageInput" class="cursor-pointer">
+                        <div class="text-4xl mb-4">🖼️</div>
+                        <p class="text-lg font-medium">انقر لرفع الصورة</p>
+                        <p class="text-gray-500 dark:text-gray-400 mt-2">PNG, JPG, JPEG - حتى 10MB</p>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Dual Images Upload -->
+            <div id="dualUpload" class="hidden grid md:grid-cols-2 gap-6">
+                <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-primary transition-colors">
+                    <input type="file" id="originalImageInput" accept="image/*" class="hidden">
+                    <label for="originalImageInput" class="cursor-pointer">
+                        <div class="text-4xl mb-4">📄</div>
+                        <p class="text-lg font-medium">المستند الأصلي</p>
+                        <p class="text-gray-500 dark:text-gray-400 mt-2">رفع الصورة المرجعية</p>
+                    </label>
+                </div>
+                
+                <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-primary transition-colors">
+                    <input type="file" id="testImageInput" accept="image/*" class="hidden">
+                    <label for="testImageInput" class="cursor-pointer">
+                        <div class="text-4xl mb-4">🔍</div>
+                        <p class="text-lg font-medium">المستند المراد فحصه</p>
+                        <p class="text-gray-500 dark:text-gray-400 mt-2">رفع الصورة للتحقق</p>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Display and Selection Area -->
+        <div id="imageArea" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+            <h3 class="text-xl font-bold mb-6 flex items-center">
+                <span class="ml-2">🎯</span>
+                تحديد المناطق للمقارنة
+            </h3>
+            
+            <div class="grid gap-6" id="imageDisplay">
+                <!-- Images will be displayed here -->
+            </div>
+
+            <div class="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <p class="text-sm text-blue-700 dark:text-blue-300">
+                    <strong>تعليمات:</strong> حدد المناطق المتطابقة في كلا المستندين للمقارنة. يفضل اختيار مناطق تحتوي على نصوص أو رموز واضحة.
+                </p>
+            </div>
+
+            <div class="mt-6 flex justify-center">
+                <button id="startAnalysis" class="bg-primary hover:bg-primary/90 text-white px-8 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    🔬 بدء التحليل المتقدم
+                </button>
+            </div>
+        </div>
+
+        <!-- Analysis Results -->
+        <div id="analysisResults" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+            <h3 class="text-xl font-bold mb-6 flex items-center">
+                <span class="ml-2">📊</span>
+                نتائج التحليل
+            </h3>
+            
+            <div id="analysisContent">
+                <!-- Results will be displayed here -->
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 text-center">
+            <div class="animate-spin text-4xl mb-4">🔄</div>
+            <h3 class="text-xl font-bold mb-2">جاري التحليل المتقدم</h3>
+            <p class="text-gray-600 dark:text-gray-400 loading-dots">يتم تحليل الخصائص البصرية والفيزيائية للمستندات</p>
+            <div class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                <p>• تطبيع الإضاءة والتباين</p>
+                <p>• تحليل ملمس الورق</p>
+                <p>• فحص خصائص الحبر</p>
+                <p>• مقارنة جودة الطباعة</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 dark:bg-gray-900 text-white py-6 mt-12">
+        <div class="container mx-auto px-4 text-center">
+            <p>تطوير: الحلول الرقمية | م: رأفت عمر</p>
+            <p class="text-gray-400 mt-2">رقيب المطور - منصة متقدمة للتحقق البصري</p>
+        </div>
+    </footer>
+
+    <script>
+        let uploadMode = 'single';
+        let images = {};
+        let selections = {};
+
+        // Handle upload mode change
+        document.querySelectorAll('input[name="uploadMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                uploadMode = e.target.value;
+                document.getElementById('singleUpload').classList.toggle('hidden', uploadMode !== 'single');
+                document.getElementById('dualUpload').classList.toggle('hidden', uploadMode !== 'dual');
+                resetInterface();
+            });
+        });
+
+        // Handle file uploads
+        document.getElementById('singleImageInput').addEventListener('change', (e) => {
+            handleFileUpload(e.target.files[0], 'single');
+        });
+
+        document.getElementById('originalImageInput').addEventListener('change', (e) => {
+            handleFileUpload(e.target.files[0], 'original');
+        });
+
+        document.getElementById('testImageInput').addEventListener('change', (e) => {
+            handleFileUpload(e.target.files[0], 'test');
+        });
+
+        function handleFileUpload(file, type) {
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                images[type] = e.target.result;
+                displayImages();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function displayImages() {
+            const imageDisplay = document.getElementById('imageDisplay');
+            const imageArea = document.getElementById('imageArea');
+            
+            imageDisplay.innerHTML = '';
+
+            if (uploadMode === 'single' && images.single) {
+                imageDisplay.innerHTML = `
+                    <div class="canvas-container mx-auto">
+                        <img src="${images.single}" class="max-w-full h-auto max-h-96 rounded-lg shadow" id="singleImg">
+                        <div class="mt-4 text-center">
+                            <p class="text-gray-600 dark:text-gray-400">حدد المنطقة الأولى (المستند الأصلي) ثم المنطقة الثانية (المستند المراد فحصه)</p>
+                        </div>
+                    </div>
+                `;
+                imageArea.classList.remove('hidden');
+            } else if (uploadMode === 'dual' && images.original && images.test) {
+                imageDisplay.innerHTML = `
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="text-center">
+                            <h4 class="font-medium mb-3">المستند الأصلي</h4>
+                            <div class="canvas-container">
+                                <img src="${images.original}" class="w-full h-auto max-h-80 rounded-lg shadow" id="originalImg">
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <h4 class="font-medium mb-3">المستند المراد فحصه</h4>
+                            <div class="canvas-container">
+                                <img src="${images.test}" class="w-full h-auto max-h-80 rounded-lg shadow" id="testImg">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                imageArea.classList.remove('hidden');
+            }
+
+            // Enable selection functionality
+            setTimeout(enableImageSelection, 100);
+        }
+
+        function enableImageSelection() {
+            // This would implement the selection functionality
+            // For now, we'll enable the analysis button
+            const startButton = document.getElementById('startAnalysis');
+            startButton.disabled = false;
+        }
+
+        // Handle analysis start
+        document.getElementById('startAnalysis').addEventListener('click', startAnalysis);
+
+        async function startAnalysis() {
+            const loadingState = document.getElementById('loadingState');
+            const imageArea = document.getElementById('imageArea');
+            const analysisResults = document.getElementById('analysisResults');
+
+            // Show loading state
+            imageArea.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+            analysisResults.classList.add('hidden');
+
+            // Register handler for analysis results
+            window.Poe.registerHandler("document-analysis", (result, context) => {
+                const msg = result.responses[0];
+                
+                if (msg.status === "error") {
+                    showAnalysisError("خطأ في التحليل: " + msg.statusText);
+                } else if (msg.status === "complete") {
+                    showAnalysisResults(msg.content);
+                    loadingState.classList.add('hidden');
+                    analysisResults.classList.remove('hidden');
+                }
+            });
+
+            try {
+                // Prepare analysis prompt
+                const analysisPrompt = `@Claude-Sonnet-4 قم بتحليل هذه الصور للمستندات لفحص الأصالة والكشف عن التزوير. ركز على:
+
+1. ملمس الورق ونوعيته
+2. خصائص الحبر وامتصاصه
+3. جودة الطباعة ودقتها
+4. الأنماط المجهرية والتفاصيل الدقيقة
+5. التناسق في المواد المستخدمة
+
+تجاهل الاختلافات في:
+- الإضاءة والظلال
+- زاوية التصوير
+- الجودة العامة للصورة
+
+قدم تقريراً مفصلاً باللغة العربية يتضمن:
+- تقييم عام للأصالة (أصلي/مشكوك فيه/مزيف)
+- تحليل مفصل لكل خاصية
+- نقاط القوة والضعف في كل مستند
+- توصيات للتحقق الإضافي إن لزم الأمر
+
+قدم النتيجة بتنسيق JSON منظم للعرض في الواجهة.`;
+
+                // Create attachments array with the uploaded images
+                const attachments = [];
+                if (uploadMode === 'single' && images.single) {
+                    // Convert base64 to file for single image
+                    const file = await base64ToFile(images.single, 'combined_document.jpg');
+                    attachments.push(file);
+                } else if (uploadMode === 'dual') {
+                    if (images.original) {
+                        const originalFile = await base64ToFile(images.original, 'original_document.jpg');
+                        attachments.push(originalFile);
+                    }
+                    if (images.test) {
+                        const testFile = await base64ToFile(images.test, 'test_document.jpg');
+                        attachments.push(testFile);
+                    }
+                }
+
+                await window.Poe.sendUserMessage(analysisPrompt, {
+                    handler: "document-analysis",
+                    stream: false,
+                    openChat: false,
+                    attachments: attachments
+                });
+
+            } catch (error) {
+                showAnalysisError("خطأ في بدء التحليل: " + error.message);
+                loadingState.classList.add('hidden');
+                imageArea.classList.remove('hidden');
+            }
+        }
+
+        async function base64ToFile(base64String, fileName) {
+            const response = await fetch(base64String);
+            const blob = await response.blob();
+            return new File([blob], fileName, { type: blob.type });
+        }
+
+        function showAnalysisResults(content) {
+            const analysisContent = document.getElementById('analysisContent');
+            
+            try {
+                // Try to parse JSON if the response is in JSON format
+                const results = JSON.parse(content);
+                
+                analysisContent.innerHTML = `
+                    <div class="analysis-result space-y-6">
+                        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-6 rounded-lg">
+                            <h4 class="text-lg font-bold mb-3 flex items-center">
+                                <span class="ml-2">🎯</span>
+                                التقييم العام
+                            </h4>
+                            <div class="text-lg font-medium ${results.authenticity === 'أصلي' ? 'text-green-600' : results.authenticity === 'مزيف' ? 'text-red-600' : 'text-yellow-600'}">
+                                ${results.authenticity || 'قيد التحليل'}
+                            </div>
+                        </div>
+
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                                <h5 class="font-bold mb-3">📝 تحليل الورق</h5>
+                                <p class="text-sm">${results.paper_analysis || 'غير متوفر'}</p>
+                            </div>
+                            
+                            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                                <h5 class="font-bold mb-3">🖋️ تحليل الحبر</h5>
+                                <p class="text-sm">${results.ink_analysis || 'غير متوفر'}</p>
+                            </div>
+                            
+                            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                                <h5 class="font-bold mb-3">🖨️ جودة الطباعة</h5>
+                                <p class="text-sm">${results.print_quality || 'غير متوفر'}</p>
+                            </div>
+                            
+                            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                                <h5 class="font-bold mb-3">🔬 التفاصيل المجهرية</h5>
+                                <p class="text-sm">${results.microscopic_details || 'غير متوفر'}</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
+                            <h5 class="font-bold mb-3 flex items-center">
+                                <span class="ml-2">💡</span>
+                                التوصيات
+                            </h5>
+                            <p class="text-sm">${results.recommendations || 'لا توجد توصيات إضافية'}</p>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                // If not JSON, display as formatted text
+                analysisContent.innerHTML = `
+                    <div class="analysis-result">
+                        <div class="prose dark:prose-invert max-w-none">
+                            ${content.replace(/\n/g, '<br>')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function showAnalysisError(errorMessage) {
+            const analysisContent = document.getElementById('analysisContent');
+            analysisContent.innerHTML = `
+                <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                    <h4 class="text-red-800 dark:text-red-300 font-medium mb-2">خطأ في التحليل</h4>
+                    <p class="text-red-700 dark:text-red-400">${errorMessage}</p>
+                    <button onclick="location.reload()" class="mt-3 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm">
+                        إعادة المحاولة
+                    </button>
+                </div>
+            `;
+        }
+
+        function resetInterface() {
+            images = {};
+            selections = {};
+            document.getElementById('imageArea').classList.add('hidden');
+            document.getElementById('analysisResults').classList.add('hidden');
+            document.getElementById('loadingState').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
